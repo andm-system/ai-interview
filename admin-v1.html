@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>クルサポ 管理画面</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+/* 管理画面: authenticatedロール+RLSでの直接テーブルアクセス
+   (候補者側=Edge Function経由とは方式が異なる。schema.sqlのRLS参照) */
+:root{--ink:#22302e;--sub:#677572;--bg:#f4f6f5;--card:#fff;--primary:#23615a;
+  --line:#dfe6e4;--danger:#a33;--ok:#2e7d32;--hold:#b8860b}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Hiragino Sans","Noto Sans JP",-apple-system,sans-serif;
+  background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6}
+button{font-family:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;
+  border:1px solid var(--line);border-radius:8px;width:100%;background:#fff}
+label{display:block;font-size:12px;color:var(--sub);margin:10px 0 3px}
+.hidden{display:none!important}
+.btn{background:var(--primary);color:#fff;border:none;border-radius:8px;
+  padding:9px 16px;font-weight:600}
+.btn.sub{background:#fff;color:var(--primary);border:1px solid var(--primary)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.5}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:10px 20px;
+  display:flex;justify-content:space-between;align-items:center}
+header b{color:var(--primary)}
+nav{display:flex;gap:4px;background:var(--card);padding:0 20px;border-bottom:1px solid var(--line)}
+nav button{background:none;border:none;padding:12px 14px;font-size:14px;color:var(--sub);
+  border-bottom:2px solid transparent}
+nav button.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:700}
+main{max-width:1100px;margin:0 auto;padding:20px}
+.card{background:var(--card);border-radius:12px;padding:18px;margin-bottom:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.card h2{font-size:16px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--sub);font-weight:600;font-size:12px;white-space:nowrap}
+tr.clickable:hover{background:#eef4f2;cursor:pointer}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#e8eeec}
+.pill.完了{background:#e3f1e4;color:var(--ok)}
+.pill.受検中{background:#e3ecf6;color:#1a5b9e}
+.pill.中断{background:#fdf0dc;color:var(--hold)}
+.pill.期限切れ{background:#f6e3e3;color:var(--danger)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.kpi-card{background:var(--card);border-radius:12px;padding:14px;text-align:center}
+.kpi-card b{font-size:24px;color:var(--primary);display:block}
+.kpi-card span{font-size:12px;color:var(--sub)}
+.reco{padding:10px 14px;border-radius:8px;font-weight:700;display:inline-block}
+.reco.GO{background:#e3f1e4;color:var(--ok)}
+.reco.HOLD{background:#fdf0dc;color:var(--hold)}
+.reco.NO_GO{background:#f6e3e3;color:var(--danger)}
+.note{font-size:12px;color:var(--sub);background:#f0f3f2;padding:8px 12px;border-radius:8px;margin-top:8px}
+.transcript{max-height:400px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:12px}
+.transcript .t-ai{color:var(--primary);margin-bottom:8px}
+.transcript .t-me{margin-bottom:8px}
+.transcript .t-sys{color:var(--sub);font-size:12px;margin-bottom:8px}
+.qrow{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.qrow input{flex:1}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px}
+.filters>div{min-width:150px}
+.copybox{display:flex;gap:8px;margin-top:8px}
+#login-screen{max-width:380px;margin:80px auto}
+@media(max-width:700px){.grid2,.grid3{grid-template-columns:1fr}main{padding:12px}}
+</style>
+</head>
+<body>
+
+<!-- ================= ログイン ================= -->
+<div id="login-screen">
+  <div class="card">
+    <h2>クルサポ 管理画面</h2>
+    <label>メールアドレス</label><input id="login-email" type="email" autocomplete="username">
+    <label>パスワード</label><input id="login-pass" type="password" autocomplete="current-password">
+    <p id="login-err" style="color:var(--danger);font-size:12px;margin-top:8px"></p>
+    <button class="btn" id="login-btn" style="width:100%;margin-top:14px">ログイン</button>
+  </div>
+</div>
+
+<!-- ================= アプリ本体 ================= -->
+<div id="app" class="hidden">
+<header>
+  <div><b>クルサポ</b> AI一次面談 管理</div>
+  <div><span id="whoami" style="color:var(--sub);font-size:12px;margin-right:10px"></span>
+    <button class="btn sub sm" id="logout-btn">ログアウト</button></div>
+</header>
+<nav id="tabs">
+  <button data-tab="sessions" class="active">セッション</button>
+  <button data-tab="dashboard">検証ダッシュボード</button>
+  <button data-tab="templates" data-op>質問テンプレ</button>
+  <button data-tab="tenants" data-op>テナント</button>
+</nav>
+<main>
+
+  <!-- ===== セッション ===== -->
+  <section id="tab-sessions">
+    <div class="card" data-op id="issue-card">
+      <h2>面談セッション発行</h2>
+      <div class="grid2">
+        <div><label>テナント(企業)</label><select id="i-tenant"></select></div>
+        <div><label>職種テンプレート</label><select id="i-template"></select></div>
+        <div><label>候補者名</label><input id="i-name" placeholder="山田 太郎"></div>
+        <div><label>候補者メール</label><input id="i-email" type="email"></div>
+        <div><label>受検期限</label><input id="i-deadline" type="datetime-local"></div>
+        <div><label>AI面接官(候補者には選択させず、こちらで指定)</label>
+          <select id="i-interviewer">
+            <option value="sato">佐藤 みなみ(柔らかい・共感型)</option>
+            <option value="tanaka">田中 健(テンポよく端的)</option>
+            <option value="suzuki">鈴木 恵子(ベテラン・落ち着き)</option>
+          </select></div>
+      </div>
+      <label>企業カスタム質問(最大5問・任意。転職理由と志望動機の間に挿入)</label>
+      <div id="i-customs"></div>
+      <button class="btn sub sm" id="i-add-custom">+ カスタム質問を追加</button>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-weight:normal;cursor:pointer">
+        <input type="checkbox" id="i-testmode" style="width:auto;margin:0">
+        <span>テストモード(アニメーター面接官・実写アバターを使わない)</span>
+      </label>
+      <div class="hint" style="margin-top:4px">
+        社内検証やA/B比較の対照群用。実写アバターの利用料が発生しません。
+      </div>
+      <div style="margin-top:14px"><button class="btn" id="issue-btn">発行してURLを生成</button></div>
+      <div id="issue-result" class="hidden">
+        <div class="copybox">
+          <input id="issue-url" readonly>
+          <button class="btn sm" id="copy-url">コピー</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>セッション一覧</h2>
+      <div class="filters">
+        <div><label>ステータス</label>
+          <select id="f-status"><option value="">すべて</option>
+            <option>未受検</option><option>受検中</option><option>中断</option>
+            <option>完了</option><option>期限切れ</option></select></div>
+        <div><label>テナント</label><select id="f-tenant"><option value="">すべて</option></select></div>
+        <button class="btn sub sm" id="csv-sessions">セッション一覧CSV</button>
+        <button class="btn sub sm" id="csv-transcripts">全文文字起こしCSV</button>
+        <button class="btn sub sm" id="csv-reports">レポートJSON</button>
+      </div>
+      <table><thead><tr><th>候補者</th><th>テナント</th><th>ステータス</th>
+        <th>発行日</th><th>期限</th><th>完了</th><th></th></tr></thead>
+        <tbody id="session-rows"></tbody></table>
+    </div>
+
+    <!-- レポート詳細 -->
+    <div class="card hidden" id="report-detail">
+      <button class="btn sub sm" id="back-to-list">← 一覧へ戻る</button>
+      <h2 style="margin-top:12px" id="rd-title"></h2>
+      <div id="rd-body"></div>
+    </div>
+  </section>
+
+  <!-- ===== 検証ダッシュボード(A/B比較測定)===== -->
+  <section id="tab-dashboard" class="hidden">
+    <div class="card">
+      <h2>検証ダッシュボード(MiAI比較用KPI)</h2>
+      <div class="filters">
+        <div><label>期間(発行日)From</label><input type="date" id="d-from"></div>
+        <div><label>To</label><input type="date" id="d-to"></div>
+        <button class="btn sm" id="d-apply">適用</button>
+        <button class="btn sub sm" id="csv-kpi">KPI CSVダウンロード</button>
+      </div>
+      <div class="grid3" id="kpi-cards"></div>
+      <div style="margin-top:16px;overflow-x:auto">
+      <table><thead><tr>
+        <th>候補者</th><th>ステータス</th><th>同意</th><th>完了</th><th>所要(分)</th>
+        <th>離脱ポイント</th><th>回答文字数計</th><th>平均応答(秒)</th><th>深掘り数</th><th>再開数</th>
+      </tr></thead><tbody id="kpi-rows"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 質問テンプレ(ノーコード編集)===== -->
+  <section id="tab-templates" class="hidden">
+    <div class="card">
+      <h2>質問テンプレート編集</h2>
+      <div class="filters">
+        <div style="min-width:260px"><label>テンプレート</label><select id="t-select"></select></div>
+        <button class="btn sub sm" id="t-new">+ 新規テンプレ</button>
+      </div>
+      <div id="t-editor" class="hidden">
+        <label>テンプレ名</label><input id="t-name">
+        <label style="margin-top:14px">質問(上から順に進行。▲▼で並び替え)</label>
+        <div id="t-questions"></div>
+        <button class="btn sub sm" id="t-add-q">+ 質問を追加</button>
+        <div style="margin-top:14px">
+          <button class="btn" id="t-save">保存</button>
+          <button class="btn sub" id="t-delete" style="color:var(--danger);border-color:var(--danger)">テンプレを削除</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== テナント ===== -->
+  <section id="tab-tenants" class="hidden">
+    <div class="card">
+      <h2>テナント(企業)管理</h2>
+      <table><thead><tr><th>企業名</th><th>深掘り上限</th><th></th></tr></thead>
+        <tbody id="tenant-rows"></tbody></table>
+      <button class="btn sub sm" id="tn-new" style="margin-top:10px">+ 新規テナント</button>
+    </div>
+    <div class="card hidden" id="tn-editor">
+      <h2 id="tn-editor-title">テナント編集</h2>
+      <label>企業名</label><input id="tn-name">
+      <div class="grid2">
+        <div><label>同意文言:企業名(差し込み変数)</label><input id="tn-company"></div>
+        <div><label>同意文言:委託先名</label><input id="tn-vendor" value="株式会社クルサポ"></div>
+      </div>
+      <label>深掘り回数の上限(0〜3)</label>
+      <select id="tn-probe"><option>0</option><option>1</option><option selected>2</option><option>3</option></select>
+      <label>評価軸定義(JSON。key/label/desc/weight)</label>
+      <textarea id="tn-axes" rows="8" style="font-family:monospace;font-size:12px"></textarea>
+      <div style="margin-top:12px"><button class="btn" id="tn-save">保存</button></div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<script>
+/* ============================================================
+   設定(デプロイ時にここだけ書き換える)
+   ============================================================ */
+const CONFIG = {
+  SUPABASE_URL: "https://ejiokjjxnflaabvstkwv.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqaW9ramp4bmZsYWFidnN0a3d2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUyMDA3MjIsImV4cCI6MjEwMDc3NjcyMn0.e86t_a4Tqb3av0eoUhgQDYXDK8KC1BLOGOurtw62UaE", // anonキーは公開前提(RLSで保護)
+  // 候補者用ページの公開URL(GitHub Pages確定後に書き換え)
+  INTERVIEW_PAGE_URL: "http://localhost:8000/interview-v1.html",
+};
+
+const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+const $ = (id)=>document.getElementById(id);
+let ROLE = null, MY_TENANTS = [], tenants = [], templates = [], sessions = [];
+let radarChart = null;
+
+/* ============ 認証 ============ */
+$("login-btn").addEventListener("click", async ()=>{
+  $("login-err").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({
+    email: $("login-email").value, password: $("login-pass").value });
+  if(error){ $("login-err").textContent = "ログインできません。メールとパスワードをご確認ください。"; return; }
+  boot();
+});
+$("logout-btn").addEventListener("click", async ()=>{ await sb.auth.signOut(); location.reload(); });
+
+async function boot(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if(!user) return;
+  const { data: roles } = await sb.from("users_roles").select("*").eq("user_id", user.id);
+  if(!roles?.length){ $("login-err").textContent = "権限が付与されていません。運用者にご連絡ください。"; await sb.auth.signOut(); return; }
+  ROLE = roles.some(r=>r.role==="operator") ? "operator" : "client";
+  MY_TENANTS = roles.filter(r=>r.tenant_id).map(r=>r.tenant_id);
+  $("whoami").textContent = `${user.email}(${ROLE==="operator"?"運用者":"企業担当者"})`;
+  if(ROLE !== "operator") document.querySelectorAll("[data-op]").forEach(el=>el.classList.add("hidden"));
+  $("login-screen").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  await loadAll();
+}
+sb.auth.getSession().then(({data:{session}})=>{ if(session) boot(); });
+
+/* ============ データロード ============ */
+async function loadAll(){
+  const [t, tp, s] = await Promise.all([
+    sb.from("tenants").select("*").order("created_at"),
+    sb.from("job_templates").select("*").order("created_at"),
+    sb.from("interview_sessions").select("*").order("created_at",{ascending:false}),
+  ]);
+  tenants = t.data||[]; templates = tp.data||[]; sessions = s.data||[];
+  renderSelectors(); renderSessions(); renderDashboard(); renderTemplates(); renderTenants();
+}
+
+function tenantName(id){ return tenants.find(t=>t.id===id)?.name || "—"; }
+function fmt(d){ return d ? new Date(d).toLocaleString("ja-JP",{dateStyle:"short",timeStyle:"short"}) : "—"; }
+
+function renderSelectors(){
+  $("i-tenant").innerHTML = tenants.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("");
+  $("i-template").innerHTML = templates.map(t=>`<option value="${t.id}">${esc(t.name)}${t.tenant_id?"(専用)":"(共通)"}</option>`).join("");
+  $("f-tenant").innerHTML = `<option value="">すべて</option>` +
+    tenants.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join("");
+}
+function esc(s){ return String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ============ タブ ============ */
+document.querySelectorAll("#tabs button").forEach(b=>b.addEventListener("click", ()=>{
+  document.querySelectorAll("#tabs button").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  ["sessions","dashboard","templates","tenants"].forEach(t=>
+    $("tab-"+t).classList.toggle("hidden", t !== b.dataset.tab));
+}));
+
+/* ============ セッション発行 ============ */
+$("i-add-custom").addEventListener("click", ()=>{
+  if($("i-customs").children.length >= 5) return alert("カスタム質問は最大5問です");
+  const d = document.createElement("div"); d.className="qrow";
+  d.innerHTML = `<input placeholder="質問文"><button class="btn sub sm">削除</button>`;
+  d.querySelector("button").onclick = ()=>d.remove();
+  $("i-customs").appendChild(d);
+});
+$("issue-btn").addEventListener("click", async ()=>{
+  const name = $("i-name").value.trim(), email = $("i-email").value.trim();
+  const deadline = $("i-deadline").value;
+  if(!name || !email || !deadline) return alert("候補者名・メール・期限は必須です");
+  const customs = [...$("i-customs").querySelectorAll("input")]
+    .map(i=>({text:i.value.trim()})).filter(q=>q.text).slice(0,5);
+  const { data, error } = await sb.from("interview_sessions").insert({
+    tenant_id: $("i-tenant").value, candidate_name: name, candidate_email: email,
+    template_id: $("i-template").value, custom_questions: customs,
+    interviewer_key: $("i-interviewer").value,
+    deadline: new Date(deadline).toISOString(),
+  }).select().single();
+  if(error) return alert("発行に失敗しました: " + error.message);
+  $("issue-result").classList.remove("hidden");
+  // テストモード時は ?avatar=off を付ける。候補者画面がSVGアバターに固定される
+  const testMode = $("i-testmode").checked;
+  $("issue-url").value =
+    `${CONFIG.INTERVIEW_PAGE_URL}?t=${data.token}` + (testMode ? "&avatar=off" : "");
+  await loadAll();
+});
+$("copy-url").addEventListener("click", ()=>{
+  navigator.clipboard.writeText($("issue-url").value);
+  $("copy-url").textContent = "コピー済";
+  setTimeout(()=>$("copy-url").textContent="コピー", 1500);
+});
+
+/* ============ セッション一覧 ============ */
+function filteredSessions(){
+  return sessions.filter(s =>
+    (!$("f-status").value || s.status === $("f-status").value) &&
+    (!$("f-tenant").value || s.tenant_id === $("f-tenant").value));
+}
+function renderSessions(){
+  $("session-rows").innerHTML = filteredSessions().map(s=>`
+    <tr class="clickable" data-id="${s.id}">
+      <td>${esc(s.candidate_name)}<br><small style="color:var(--sub)">${esc(s.candidate_email)}</small></td>
+      <td>${esc(tenantName(s.tenant_id))}</td>
+      <td><span class="pill ${s.status}">${s.status}</span></td>
+      <td>${fmt(s.created_at)}</td><td>${fmt(s.deadline)}</td><td>${fmt(s.completed_at)}</td>
+      <td><button class="btn sub sm">詳細</button></td></tr>`).join("")
+    || `<tr><td colspan="7" style="color:var(--sub)">セッションはまだありません。上のフォームから発行してください。</td></tr>`;
+  document.querySelectorAll("#session-rows tr.clickable").forEach(tr=>
+    tr.addEventListener("click", ()=>openReport(tr.dataset.id)));
+}
+$("f-status").addEventListener("change", renderSessions);
+$("f-tenant").addEventListener("change", renderSessions);
+
+/* ============ レポート詳細 ============ */
+async function openReport(sessionId){
+  const s = sessions.find(x=>x.id===sessionId);
+  const [{ data: msgs }, { data: report }] = await Promise.all([
+    sb.from("messages").select("*").eq("session_id", sessionId).order("created_at"),
+    sb.from("reports").select("*").eq("session_id", sessionId).maybeSingle(),
+  ]);
+  $("rd-title").textContent = `${s.candidate_name} さん(${tenantName(s.tenant_id)})`;
+  const p = report?.payload;
+  const axes = tenants.find(t=>t.id===s.tenant_id)?.eval_axes || [];
+  let html = `<p><span class="pill ${s.status}">${s.status}</span>
+    同意: ${fmt(s.consent_at)} / 完了: ${fmt(s.completed_at)}</p>`;
+
+  if(p){
+    html += `<h3 style="margin:14px 0 6px">要約</h3><p>${esc(p.summary)}</p>` +
+      (p.overall != null ? `<p style="margin-top:10px"><span style="font-size:30px;font-weight:700;color:var(--primary)">${p.overall}</span><span style="color:var(--sub)"> /100点(総合)</span></p>` : "") +
+      `<div class="grid2" style="margin-top:14px">
+        <div><canvas id="radar" height="240"></canvas></div>
+        <div><table><thead><tr><th>評価軸</th><th>点</th><th>根拠(発言引用)</th></tr></thead><tbody>` +
+      axes.map(a=>{
+        const sc = p.scores?.[a.key];
+        return `<tr><td>${esc(a.label)}</td><td><b>${sc?.score ?? "—"}</b></td>
+          <td style="font-size:12px">${esc(sc?.evidence ?? "判定材料不足")}</td></tr>`;
+      }).join("") + `</tbody></table></div></div>
+      <h3 style="margin:14px 0 6px">労働条件</h3>
+      <table><tbody>
+        <tr><th>通勤</th><td>${esc(p.conditions?.commute)}</td><th>希望年収</th><td>${esc(p.conditions?.salary_hope)}</td></tr>
+        <tr><th>入社時期</th><td>${esc(p.conditions?.start_date)}</td><th>夜勤/残業</th>
+          <td>${esc(p.conditions?.night_shift)} / ${esc(p.conditions?.overtime)}</td></tr>
+      </tbody></table>
+      <h3 style="margin:14px 0 6px">推奨</h3>
+      <span class="reco ${p.recommendation}">${p.recommendation}</span>
+      <p style="margin-top:8px">${esc(p.recommendation_reason)}</p>
+      <div class="note">本推奨は参考情報です。合否の判断は企業様が行ってください。</div>
+      ${p.flags?.length ? `<h3 style="margin:14px 0 6px">二次面接で確認すべき残論点</h3><ul style="padding-left:20px">${p.flags.map(f=>`<li>${esc(f)}</li>`).join("")}</ul>`:""}
+      ${p.candidate_questions?.length ? `<h3 style="margin:14px 0 6px">候補者からの逆質問</h3><ul style="padding-left:20px">${p.candidate_questions.map(f=>`<li>${esc(f)}</li>`).join("")}</ul>`:""}
+      <h3 style="margin:14px 0 6px">クルサポ解釈コメント</h3>
+      <textarea id="rd-comment" rows="3" ${ROLE!=="operator"?"readonly":""}>${esc(report.kurusapo_comment??"")}</textarea>
+      ${ROLE==="operator" ? `<button class="btn sm" id="rd-save-comment" style="margin-top:8px">コメント保存</button>`:""}`;
+  } else {
+    html += `<p class="note">レポートは${s.status==="完了"?"生成中です。少し待って再度開いてください。":"面談完了後に自動生成されます。"}</p>`;
+  }
+
+  if(s.recording_path){
+    html += `<h3 style="margin:16px 0 6px">面接録画</h3><div id="rd-video" style="color:var(--sub)">録画を読み込んでいます…</div>`;
+  }
+
+  html += `<h3 style="margin:16px 0 6px">全文ログ</h3><div class="transcript">` +
+    (msgs||[]).map(m=>{
+      const cls = m.role==="ai"?"t-ai":m.role==="candidate"?"t-me":"t-sys";
+      const who = m.role==="ai"?"AI":m.role==="candidate"?"候補者":"システム";
+      return `<div class="${cls}"><b>${who}:</b> ${esc(m.content)}${m.is_probe?' <span class="pill">深掘り</span>':''}</div>`;
+    }).join("") + `</div>`;
+
+  $("rd-body").innerHTML = html;
+  $("report-detail").classList.remove("hidden");
+  document.querySelector("#tab-sessions .card:nth-child(2)").scrollIntoView();
+
+  if(s.recording_path){
+    sb.storage.from("recordings").createSignedUrl(s.recording_path, 3600)
+      .then(({ data, error })=>{
+        const el = $("rd-video");
+        if(!el) return;
+        el.innerHTML = (data && !error)
+          ? `<video controls preload="metadata" style="width:100%;max-width:520px;border-radius:8px;background:#000" src="${data.signedUrl}"></video>`
+          : "録画を取得できませんでした(権限またはファイル未到達)";
+      });
+  }
+
+  if(p){
+    if(radarChart) radarChart.destroy();
+    radarChart = new Chart($("radar"), {
+      type: "radar",
+      data: { labels: axes.map(a=>a.label),
+        datasets: [{ label: s.candidate_name,
+          data: axes.map(a=>p.scores?.[a.key]?.score ?? 0),
+          backgroundColor:"rgba(35,97,90,.15)", borderColor:"#23615a" }] },
+      options: { scales:{ r:{ min:0, max:5, ticks:{stepSize:1} } } },
+    });
+    $("rd-save-comment")?.addEventListener("click", async ()=>{
+      const { error } = await sb.from("reports")
+        .update({ kurusapo_comment: $("rd-comment").value }).eq("session_id", sessionId);
+      alert(error ? "保存できませんでした(operator権限が必要です)" : "保存しました");
+    });
+  }
+}
+$("back-to-list").addEventListener("click", ()=>$("report-detail").classList.add("hidden"));
+
+/* ============ CSV / JSON エクスポート ============ */
+function downloadFile(name, content, mime="text/csv"){
+  const blob = new Blob(["\uFEFF"+content], {type: mime+";charset=utf-8"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function csvRow(arr){ return arr.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")+"\n"; }
+
+$("csv-sessions").addEventListener("click", ()=>{
+  let csv = csvRow(["候補者名","メール","テナント","ステータス","発行日","同意","完了","期限","離脱ポイント","深掘り数","再開数","実写アバター","実写秒数","実写概算コスト円"]);
+  filteredSessions().forEach(s=>{
+    csv += csvRow([s.candidate_name, s.candidate_email, tenantName(s.tenant_id), s.status,
+      s.created_at, s.consent_at, s.completed_at, s.deadline,
+      s.kpi?.drop_question_id, s.kpi?.probe_count??0, s.kpi?.resume_count??0,
+      s.kpi?.real_avatar ? (s.kpi?.real_avatar_sandbox ? "sandbox" : "1") : "",
+      s.kpi?.real_avatar_seconds ?? "",
+      s.kpi?.real_avatar_seconds && !s.kpi?.real_avatar_sandbox && s.kpi?.real_avatar_provider !== "self"
+        ? Math.ceil(s.kpi.real_avatar_seconds/60 * 15.5) : (s.kpi?.real_avatar_provider === "self" ? "内製" : "")]);
+  });
+  downloadFile("sessions.csv", csv);
+});
+$("csv-transcripts").addEventListener("click", async ()=>{
+  const ids = filteredSessions().map(s=>s.id);
+  const { data: msgs } = await sb.from("messages").select("*").in("session_id", ids).order("created_at");
+  let csv = csvRow(["候補者名","日時","話者","質問ID","深掘り","文字数","内容"]);
+  (msgs||[]).forEach(m=>{
+    const s = sessions.find(x=>x.id===m.session_id);
+    csv += csvRow([s?.candidate_name, m.created_at, m.role, m.question_id, m.is_probe?"1":"", m.char_count, m.content]);
+  });
+  downloadFile("transcripts.csv", csv);
+});
+$("csv-reports").addEventListener("click", async ()=>{
+  const ids = filteredSessions().map(s=>s.id);
+  const { data } = await sb.from("reports").select("*").in("session_id", ids);
+  const out = (data||[]).map(r=>({
+    candidate: sessions.find(s=>s.id===r.session_id)?.candidate_name,
+    kurusapo_comment: r.kurusapo_comment, ...r.payload }));
+  downloadFile("reports.json", JSON.stringify(out, null, 2), "application/json");
+});
+
+/* ============ 検証ダッシュボード(KPI 7種)============ */
+function kpiSessions(){
+  const from = $("d-from").value ? new Date($("d-from").value) : null;
+  const to = $("d-to").value ? new Date($("d-to").value + "T23:59:59") : null;
+  return sessions.filter(s=>{
+    const c = new Date(s.created_at);
+    return (!from || c >= from) && (!to || c <= to);
+  });
+}
+let answerCharsBySession = {}, responseMsBySession = {};
+async function renderDashboard(){
+  const list = kpiSessions();
+  const consented = list.filter(s=>s.consent_at);
+  const completed = list.filter(s=>s.completed_at);
+  const interrupted = list.filter(s=>Number(s.kpi?.interrupt_count??0) > 0);
+  const resumed = interrupted.filter(s=>Number(s.kpi?.resume_count??0) > 0);
+  const durations = completed.map(s=>(new Date(s.completed_at)-new Date(s.consent_at))/60000);
+  const avgDur = durations.length ? (durations.reduce((a,b)=>a+b,0)/durations.length).toFixed(1) : "—";
+  const pct = (a,b)=> b ? Math.round(a/b*100)+"%" : "—";
+
+  $("kpi-cards").innerHTML = `
+    <div class="kpi-card"><b>${pct(consented.length, list.length)}</b><span>受検開始率(同意/発行 ${consented.length}/${list.length})</span></div>
+    <div class="kpi-card"><b>${pct(completed.length, consented.length)}</b><span>受検完了率(完了/同意 ${completed.length}/${consented.length})</span></div>
+    <div class="kpi-card"><b>${avgDur}</b><span>平均所要時間(分)</span></div>
+    <div class="kpi-card"><b>${pct(resumed.length, interrupted.length)}</b><span>再開率(再開/中断 ${resumed.length}/${interrupted.length})</span></div>
+    <div class="kpi-card"><b>${list.reduce((a,s)=>a+Number(s.kpi?.probe_count??0),0)}</b><span>深掘り発生数(合計)</span></div>
+    <div class="kpi-card"><b>${list.filter(s=>s.status==="中断").length}</b><span>現在中断中</span></div>`;
+
+  // 回答文字数・平均応答時間(messagesから集計)
+  if(list.length){
+    const { data } = await sb.from("messages").select("session_id, char_count, response_ms")
+      .in("session_id", list.map(s=>s.id)).eq("role","candidate");
+    answerCharsBySession = {}; responseMsBySession = {};
+    (data||[]).forEach(m=>{
+      answerCharsBySession[m.session_id] = (answerCharsBySession[m.session_id]||0) + m.char_count;
+      if(m.response_ms != null){
+        const r = responseMsBySession[m.session_id] || { sum:0, n:0 };
+        r.sum += m.response_ms; r.n++;
+        responseMsBySession[m.session_id] = r;
+      }
+    });
+  }
+  const avgResp = (id)=>{
+    const r = responseMsBySession[id];
+    return r && r.n ? (r.sum / r.n / 1000).toFixed(1) : "—";
+  };
+  $("kpi-rows").innerHTML = list.map(s=>{
+    const dur = s.completed_at && s.consent_at
+      ? ((new Date(s.completed_at)-new Date(s.consent_at))/60000).toFixed(1) : "—";
+    return `<tr><td>${esc(s.candidate_name)}</td><td><span class="pill ${s.status}">${s.status}</span></td>
+      <td>${fmt(s.consent_at)}</td><td>${fmt(s.completed_at)}</td><td>${dur}</td>
+      <td>${esc(s.kpi?.drop_question_id??"—")}</td><td>${answerCharsBySession[s.id]??0}</td>
+      <td>${avgResp(s.id)}</td>
+      <td>${s.kpi?.probe_count??0}</td><td>${s.kpi?.resume_count??0}</td></tr>`;
+  }).join("");
+}
+$("d-apply").addEventListener("click", renderDashboard);
+$("csv-kpi").addEventListener("click", ()=>{
+  let csv = csvRow(["候補者","ステータス","発行日","同意(受検開始)","完了","所要分","離脱ポイント質問ID","回答文字数計","平均応答秒","深掘り数","再開数","中断数"]);
+  kpiSessions().forEach(s=>{
+    const dur = s.completed_at && s.consent_at
+      ? ((new Date(s.completed_at)-new Date(s.consent_at))/60000).toFixed(1) : "";
+    const r = responseMsBySession[s.id];
+    csv += csvRow([s.candidate_name, s.status, s.created_at, s.consent_at, s.completed_at, dur,
+      s.kpi?.drop_question_id, answerCharsBySession[s.id]??0,
+      r && r.n ? (r.sum/r.n/1000).toFixed(1) : "",
+      s.kpi?.probe_count??0, s.kpi?.resume_count??0, s.kpi?.interrupt_count??0]);
+  });
+  downloadFile("kpi.csv", csv);
+});
+
+/* ============ 質問テンプレ編集(ノーコード:2-5)============ */
+let editingTemplate = null;
+function renderTemplates(){
+  $("t-select").innerHTML = `<option value="">選択してください</option>` +
+    templates.map(t=>`<option value="${t.id}">${esc(t.name)}${t.tenant_id?"(専用)":"(共通)"}</option>`).join("");
+}
+$("t-select").addEventListener("change", ()=>{
+  editingTemplate = templates.find(t=>t.id===$("t-select").value) || null;
+  $("t-editor").classList.toggle("hidden", !editingTemplate);
+  if(editingTemplate){
+    $("t-name").value = editingTemplate.name;
+    renderQuestionRows(editingTemplate.questions || []);
+  }
+});
+$("t-new").addEventListener("click", async ()=>{
+  const name = prompt("新しいテンプレート名"); if(!name) return;
+  const { error } = await sb.from("job_templates").insert({ name, questions: [] });
+  if(error) return alert("作成できませんでした: "+error.message);
+  await loadAll();
+});
+function renderQuestionRows(qs){
+  $("t-questions").innerHTML = "";
+  qs.forEach((q, idx)=>{
+    const d = document.createElement("div"); d.className = "qrow";
+    d.innerHTML = `
+      <select style="width:110px">
+        ${["icebreak","career","reason","motivation","conditions"].map(p=>
+          `<option value="${p}" ${q.phase===p?"selected":""}>${p}</option>`).join("")}
+      </select>
+      <select style="width:100px">
+        ${[["free","自由回答"],["choice","選択式"],["confirm","条件確認"]].map(([v,l])=>
+          `<option value="${v}" ${q.type===v?"selected":""}>${l}</option>`).join("")}
+      </select>
+      <input value="${esc(q.text)}">
+      <button class="btn sub sm" data-a="up">▲</button>
+      <button class="btn sub sm" data-a="down">▼</button>
+      <button class="btn sub sm" data-a="del" style="color:var(--danger)">削除</button>`;
+    d.querySelector('[data-a=up]').onclick = ()=>{ if(idx>0){ [qs[idx-1],qs[idx]]=[qs[idx],qs[idx-1]]; syncAndRender(qs); } };
+    d.querySelector('[data-a=down]').onclick = ()=>{ if(idx<qs.length-1){ [qs[idx+1],qs[idx]]=[qs[idx],qs[idx+1]]; syncAndRender(qs); } };
+    d.querySelector('[data-a=del]').onclick = ()=>{ qs.splice(idx,1); syncAndRender(qs); };
+    $("t-questions").appendChild(d);
+  });
+  function syncAndRender(list){ collectQuestions(list); renderQuestionRows(list); }
+  function collectQuestions(list){
+    [...$("t-questions").children].forEach((row,i)=>{
+      const [phase, type] = row.querySelectorAll("select");
+      list[i] = { ...list[i], phase: phase.value, type: type.value,
+        text: row.querySelector("input").value };
+    });
+  }
+  $("t-questions")._collect = ()=>{ collectQuestions(qs); return qs; };
+}
+$("t-add-q").addEventListener("click", ()=>{
+  const qs = $("t-questions")._collect ? $("t-questions")._collect() : [];
+  qs.push({ id: "q" + Date.now().toString(36), phase:"career", type:"free", text:"" });
+  renderQuestionRows(qs);
+});
+$("t-save").addEventListener("click", async ()=>{
+  if(!editingTemplate) return;
+  const qs = $("t-questions")._collect().filter(q=>q.text.trim());
+  const { error } = await sb.from("job_templates")
+    .update({ name: $("t-name").value, questions: qs }).eq("id", editingTemplate.id);
+  alert(error ? "保存できませんでした: "+error.message : "保存しました");
+  await loadAll();
+});
+$("t-delete").addEventListener("click", async ()=>{
+  if(!editingTemplate || !confirm("このテンプレートを削除しますか?")) return;
+  await sb.from("job_templates").delete().eq("id", editingTemplate.id);
+  $("t-editor").classList.add("hidden");
+  await loadAll();
+});
+
+/* ============ テナント管理 ============ */
+let editingTenant = null;
+function renderTenants(){
+  $("tenant-rows").innerHTML = tenants.map(t=>`
+    <tr><td>${esc(t.name)}</td><td>${t.probe_limit}</td>
+    <td><button class="btn sub sm" data-id="${t.id}">編集</button></td></tr>`).join("");
+  document.querySelectorAll("#tenant-rows button").forEach(b=>b.addEventListener("click", ()=>{
+    editingTenant = tenants.find(t=>t.id===b.dataset.id);
+    $("tn-editor").classList.remove("hidden");
+    $("tn-editor-title").textContent = `テナント編集: ${editingTenant.name}`;
+    $("tn-name").value = editingTenant.name;
+    $("tn-company").value = editingTenant.consent_config?.company_name ?? "";
+    $("tn-vendor").value = editingTenant.consent_config?.vendor_name ?? "株式会社クルサポ";
+    $("tn-probe").value = editingTenant.probe_limit;
+    $("tn-axes").value = JSON.stringify(editingTenant.eval_axes, null, 2);
+  }));
+}
+$("tn-new").addEventListener("click", async ()=>{
+  const name = prompt("企業名"); if(!name) return;
+  const { error } = await sb.from("tenants").insert({
+    name, consent_config: { company_name: name, vendor_name: "株式会社クルサポ" } });
+  if(error) return alert("作成できませんでした: "+error.message);
+  await loadAll();
+});
+$("tn-save").addEventListener("click", async ()=>{
+  if(!editingTenant) return;
+  let axes;
+  try{ axes = JSON.parse($("tn-axes").value); }
+  catch{ return alert("評価軸JSONの形式が正しくありません"); }
+  const { error } = await sb.from("tenants").update({
+    name: $("tn-name").value,
+    consent_config: { company_name: $("tn-company").value, vendor_name: $("tn-vendor").value },
+    probe_limit: Number($("tn-probe").value), eval_axes: axes,
+  }).eq("id", editingTenant.id);
+  alert(error ? "保存できませんでした: "+error.message : "保存しました");
+  await loadAll();
+});
+</script>
+</body>
+</html>

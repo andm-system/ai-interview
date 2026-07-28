@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AI一次面談</title>
+<style>
+/* ============================================================
+   候補者用面談画面 — スマホファースト(375px基準)
+   落ち着いた深緑を基調に、急かされない・安心できる対話体験を意図
+   ============================================================ */
+:root{
+  --ink:#1e2a28; --sub:#5c6b68; --bg:#f2f5f4; --card:#ffffff;
+  --primary:#23615a; --primary-dark:#194842; --primary-soft:#e2efec;
+  --line:#dde5e3; --warn:#8a5a00; --warn-bg:#fdf3df;
+  --radius:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",-apple-system,sans-serif;
+  background:var(--bg); color:var(--ink); font-size:16px; line-height:1.7;
+  display:flex; flex-direction:column;
+}
+button{font-family:inherit; cursor:pointer}
+.hidden{display:none !important}
+
+/* ---- ヘッダー ---- */
+header{
+  background:var(--card); border-bottom:1px solid var(--line);
+  padding:12px 16px; display:flex; align-items:center; justify-content:space-between;
+  position:sticky; top:0; z-index:10;
+}
+header .title{font-weight:700; font-size:15px}
+header .title small{display:block; font-weight:400; color:var(--sub); font-size:11px}
+.icon-btn{background:none; border:none; color:var(--sub); font-size:13px; padding:6px}
+
+/* ---- 画面共通 ---- */
+.screen{flex:1; display:flex; flex-direction:column; max-width:560px; width:100%; margin:0 auto}
+.center-card{
+  background:var(--card); border-radius:var(--radius); margin:20px 16px;
+  padding:24px 20px; box-shadow:0 1px 4px rgba(30,42,40,.06);
+}
+.center-card h1{font-size:19px; margin-bottom:14px}
+.center-card p{color:var(--sub); font-size:14px; margin-bottom:10px}
+ul.consent-list{list-style:none; margin:14px 0}
+ul.consent-list li{
+  padding:10px 12px 10px 34px; position:relative; font-size:14px;
+  border-bottom:1px dashed var(--line);
+}
+ul.consent-list li::before{
+  content:"✓"; position:absolute; left:8px; color:var(--primary); font-weight:700;
+}
+.btn-primary{
+  display:block; width:100%; background:var(--primary); color:#fff; border:none;
+  border-radius:999px; padding:15px; font-size:16px; font-weight:700; margin-top:18px;
+}
+.btn-primary:active{background:var(--primary-dark)}
+.btn-primary:disabled{opacity:.5}
+
+/* ---- チャット ---- */
+#chat-log{flex:1; overflow-y:auto; padding:16px 14px 8px; -webkit-overflow-scrolling:touch}
+.msg{max-width:85%; margin-bottom:14px; padding:12px 15px; border-radius:var(--radius);
+  font-size:15px; white-space:pre-wrap; word-break:break-word;
+  animation:pop .18s ease-out}
+@keyframes pop{from{opacity:0; transform:translateY(4px)}to{opacity:1; transform:none}}
+.msg.ai{background:var(--card); border:1px solid var(--line); border-top-left-radius:4px}
+.msg.me{background:var(--primary); color:#fff; margin-left:auto; border-top-right-radius:4px}
+.msg.info{background:none; border:none; color:var(--sub); font-size:12.5px;
+  text-align:center; max-width:100%; padding:4px}
+.typing{display:inline-block; color:var(--sub); font-size:13px; padding:8px 14px}
+.typing span{animation:blink 1.2s infinite; display:inline-block}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+@media (prefers-reduced-motion: reduce){.msg,.typing span{animation:none}}
+
+/* ---- 入力エリア ---- */
+#composer{
+  background:var(--card); border-top:1px solid var(--line); padding:10px 12px
+  calc(10px + env(safe-area-inset-bottom)); position:sticky; bottom:0;
+}
+.skip-row{text-align:right; margin-bottom:6px}
+.skip-row a{color:var(--sub); font-size:13px; text-decoration:underline}
+.input-row{display:flex; gap:8px; align-items:flex-end}
+textarea{
+  flex:1; border:1.5px solid var(--line); border-radius:14px; padding:11px 13px;
+  font-family:inherit; font-size:16px; resize:none; max-height:120px; min-height:48px;
+  background:var(--bg); outline-color:var(--primary);
+}
+#send-btn{
+  background:var(--primary); color:#fff; border:none; border-radius:999px;
+  padding:0 20px; height:48px; font-size:15px; font-weight:700; flex-shrink:0;
+}
+#send-btn:disabled{opacity:.45}
+.reassure{font-size:11.5px; color:var(--sub); text-align:center; margin-top:6px}
+
+/* ---- アバター / 対面モード(Zoom風ビデオ通話レイアウト) ---- */
+.hd-left{display:flex; gap:10px; align-items:center}
+.avatar{border-radius:50%; display:flex; align-items:center; justify-content:center;
+  font-weight:700; flex-shrink:0}
+#hd-avatar{width:34px; height:34px; font-size:14px}
+.ai-row{display:flex; gap:8px; align-items:flex-start; margin-bottom:14px}
+.ai-row .avatar{width:30px; height:30px; font-size:13px; margin-top:2px}
+.ai-row .msg{margin-bottom:0}
+#face-panel{flex:1; background:#10201d; color:#e8f2ef; display:flex; flex-direction:column;
+  padding:12px 12px calc(12px + env(safe-area-inset-bottom)); text-align:center}
+#face-stage{position:relative; width:100%; flex:1; min-height:300px; display:flex;
+  align-items:flex-end; justify-content:center; background:#182b27; border-radius:16px;
+  overflow:hidden; border:2px solid transparent; transition:border-color .2s}
+#face-stage.speaking{border-color:#5dcaa5}
+#face-stage.listening{border-color:#f0c674}
+#face-figure{width:min(64%,240px); line-height:0; transition:transform .5s ease}
+/* v4.1: リアルアバター(LiveAvatar)の実写映像。ステージ全面に表示 */
+#real-figure{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  border-radius:inherit; background:#0b0f14}
+#face-stage.listening #real-figure{transform:scale(1.01)}
+#self-figure{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  border-radius:inherit; background:#0b0f14}
+#face-stage.listening #face-figure{transform:scale(1.025)} /* v3.8: 傾聴のわずかな前傾 */
+#face-video-wrap{position:absolute; inset:0}
+.avatar-clip{width:100%; height:100%; object-fit:cover; position:absolute; inset:0;
+  opacity:0; transition:opacity .22s ease} /* v3.6: クリップはクロスフェードで切替 */
+#face-figure .svg-eyes{transition:transform .16s ease}   /* v3.6: 視線のマイクロサッカード */
+#face-figure .svg-brows{transition:transform .18s ease}  /* v3.6: 質問時の眉上げ */
+@keyframes breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(1.6px)}}
+@keyframes sway{0%,100%{transform:rotate(-.6deg)}50%{transform:rotate(.6deg)}}
+@keyframes drift{0%,100%{transform:translate(0,0)}30%{transform:translate(.7px,.3px)}65%{transform:translate(-.6px,.5px)}}
+/* v4.0: うなずきは「すっと下がり、ゆっくり戻る」非対称+小さな二度目。
+   等速の上下バウンスは首振り人形に見える */
+@keyframes nod{0%{transform:translateY(0) rotate(0)}
+  18%{transform:translateY(3.6px) rotate(1.1deg)}
+  42%{transform:translateY(.6px) rotate(0)}
+  62%{transform:translateY(2.4px) rotate(.7deg)}
+  100%{transform:translateY(0) rotate(0)}}
+@keyframes nodSoft{0%{transform:translateY(0)}30%{transform:translateY(2.4px) rotate(.8deg)}100%{transform:translateY(0)}}
+/* v4.0: 頭が呼吸せず肩だけ動くのが不気味だったため、呼吸は全身(svg-breathe)へ。
+   首振り(6.1s)と漂い(9.7s)の周期をずらして重ねると、繰り返しが事実上見えない */
+#face-figure .svg-breathe{animation:breathe 4.6s ease-in-out infinite}
+#face-figure .svg-head-sway{transform-origin:100px 118px; animation:sway 6.1s ease-in-out infinite}
+#face-figure .svg-head-drift{animation:drift 9.7s ease-in-out infinite}
+#face-figure .svg-nod{transform-origin:100px 122px; transition:transform .7s ease}
+/* v4.6: 傾聴の首かしげ。人は関心を持って聞くとき頭がわずかに傾く */
+#face-stage.listening #face-figure .svg-nod{transform:rotate(1.4deg)}
+/* v4.6: 話しているときは呼吸がわずかに浅く速くなる */
+#face-stage.speaking #face-figure .svg-breathe{animation-duration:3.7s}
+#face-figure .svg-nod.nodding{animation:nod 1.05s cubic-bezier(.33,0,.2,1)}
+#face-figure .svg-nod.nodding-soft{animation:nodSoft .7s ease-out}
+@media (prefers-reduced-motion: reduce){
+  #face-figure .svg-breathe, #face-figure .svg-head-sway, #face-figure .svg-head-drift,
+  #face-figure .svg-nod.nodding, #face-figure .svg-nod.nodding-soft{animation:none}
+}
+.name-tag{position:absolute; left:10px; bottom:10px; background:rgba(0,0,0,.55);
+  color:#fff; font-size:12px; padding:4px 12px; border-radius:6px}
+#self-view{position:absolute; top:10px; right:10px; width:92px; height:124px;
+  border-radius:10px; overflow:hidden; background:#0e1a17;
+  border:1px solid rgba(255,255,255,.25); display:flex; align-items:center;
+  justify-content:center; color:#9fc4bc; font-size:11px}
+#self-video{width:100%; height:100%; object-fit:cover; transform:scaleX(-1)}
+#face-status{font-size:13px; color:#9fc4bc; margin-top:10px; min-height:22px}
+#face-subtitle{background:rgba(255,255,255,.08); border-radius:12px; padding:12px 16px;
+  font-size:15px; line-height:1.7; margin-top:8px; width:100%; min-height:52px;
+  white-space:pre-wrap; text-align:left}
+#face-controls{display:flex; gap:8px; justify-content:center; margin-top:12px; width:100%}
+.ctl-btn{background:rgba(255,255,255,.12); color:#e8f2ef; border:none; border-radius:12px;
+  padding:10px 8px; font-size:12px; flex:1; max-width:110px}
+#face-actions{margin-top:10px; width:100%}
+#face-done{background:#2f8b7e; margin-top:8px}
+#face-done:disabled{opacity:.45}
+.face-note{margin-top:10px; font-size:11px; color:#7fa39b}
+
+/* ---- バナー / 設定 ---- */
+.banner{background:var(--warn-bg); color:var(--warn); font-size:13px;
+  padding:10px 14px; text-align:center; border-bottom:1px solid #f0e2c4}
+#settings-panel{
+  position:fixed; inset:auto 0 0 0; background:var(--card); z-index:30;
+  border-radius:20px 20px 0 0; padding:20px 20px 32px; box-shadow:0 -4px 24px rgba(0,0,0,.15);
+}
+#settings-panel h2{font-size:16px; margin-bottom:14px}
+.setting-row{display:flex; justify-content:space-between; align-items:center;
+  padding:12px 0; border-bottom:1px solid var(--line); font-size:14px}
+.setting-row small{display:block; color:var(--sub); font-size:12px}
+.toggle{width:48px; height:28px; border-radius:999px; border:none; background:#c8d4d1; position:relative}
+.toggle.on{background:var(--primary)}
+.toggle::after{content:""; position:absolute; top:3px; left:3px; width:22px; height:22px;
+  background:#fff; border-radius:50%; transition:left .15s}
+.toggle.on::after{left:23px}
+#overlay{position:fixed; inset:0; background:rgba(0,0,0,.3); z-index:25}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hd-left">
+    <div class="avatar hidden" id="hd-avatar" aria-hidden="true"></div>
+    <div class="title" id="hd-title">AI一次面談<small id="tenant-name"></small></div>
+  </div>
+  <button class="icon-btn" id="settings-btn" aria-label="設定">⚙ 設定</button>
+</header>
+
+<div id="banner" class="banner hidden"></div>
+
+<!-- ローディング -->
+<div id="screen-loading" class="screen">
+  <div class="center-card"><p>読み込んでいます…</p></div>
+</div>
+
+<!-- エラー / 期限切れ -->
+<div id="screen-error" class="screen hidden">
+  <div class="center-card">
+    <h1 id="error-title">ページを表示できません</h1>
+    <p id="error-body"></p>
+  </div>
+</div>
+
+<!-- 同意画面 -->
+<div id="screen-consent" class="screen hidden">
+  <div class="center-card">
+    <h1 id="consent-heading">面談を始める前に</h1>
+    <p id="consent-intro"></p>
+    <ul class="consent-list">
+      <li>質問はAIが行いますが、<strong>合否は企業の担当者が判断</strong>します。</li>
+      <li>回答は<strong>選考の参考資料としてのみ</strong>使用されます。</li>
+      <li>回答したくない質問は<strong>スキップできます</strong>。スキップしても不利益にはなりません。</li>
+      <li>途中で切れても、<strong>同じURLからいつでも再開</strong>できます。</li>
+      <li>バーチャル対面モードでは、面接の様子(<strong>映像・音声)が録画</strong>され、選考の参考資料として企業の担当者が閲覧します。チャットモードでは録画されません。</li>
+    </ul>
+    <p style="font-size:12.5px">所要時間の目安は10〜15分です。落ち着ける場所で、ご自身のペースでお答えください。</p>
+    <button class="btn-primary" id="consent-btn">同意して面談を始める</button>
+  </div>
+</div>
+
+<!-- モード選択(同意後。MiAI同様、対面をデフォルト導線に) -->
+<div id="screen-mode" class="screen hidden">
+  <div class="center-card">
+    <h1>面談のスタイルを選んでください</h1>
+    <p>どちらを選んでも質問内容・評価は同じです。途中で切り替えることもできます。</p>
+    <button class="btn-primary" id="mode-face">バーチャル対面ではじめる(推奨)</button>
+    <p style="font-size:12px; margin-top:6px">面接官と画面越しに話す形式です。カメラとマイクを使用し、録画されます。</p>
+    <button class="btn-primary" id="mode-chat" style="background:#fff; color:var(--primary); border:1.5px solid var(--primary)">チャットではじめる</button>
+    <p style="font-size:12px; margin-top:6px">文字の打ち込みでゆっくり答える形式です。録画はされません。</p>
+  </div>
+</div>
+
+<!-- チャット -->
+<div id="screen-chat" class="screen hidden">
+  <!-- バーチャル対面モード:Zoom風レイアウト(面接官タイル+セルフビュー) -->
+  <div id="face-panel" class="hidden">
+    <div id="face-stage">
+      <div id="face-video-wrap" class="hidden" aria-hidden="true"></div>
+      <video id="real-figure" class="hidden" autoplay playsinline></video>
+      <canvas id="self-figure" class="hidden" width="512" height="512"></canvas>
+      <audio id="real-audio" autoplay></audio>
+      <div id="face-figure" aria-hidden="true"></div>
+      <div class="name-tag" id="face-name"></div>
+      <div id="self-view">
+        <video id="self-video" class="hidden" autoplay playsinline muted></video>
+        <span id="self-off">カメラ OFF</span>
+      </div>
+    </div>
+    <div id="face-status"></div>
+    <div id="face-subtitle" aria-live="polite"></div>
+    <div id="face-controls">
+      <button class="ctl-btn" id="cam-btn">カメラ OFF</button>
+      <button class="ctl-btn" id="face-skip">スキップ</button>
+      <button class="ctl-btn" id="face-text">文字入力へ</button>
+    </div>
+    <div id="face-actions">
+      <button class="btn-primary" id="face-done">話し終わったら押す</button>
+      <div class="face-note">面接の様子(映像・音声)は録画され、選考の参考として企業の担当者のみが閲覧します</div>
+    </div>
+  </div>
+  <div id="chat-log" aria-live="polite"></div>
+  <div id="composer">
+    <div class="skip-row"><a href="#" id="skip-link">この質問はスキップ</a></div>
+    <div class="input-row">
+      <textarea id="input" rows="1" placeholder="ご自身のペースでどうぞ"></textarea>
+      <button id="send-btn">回答を送信</button>
+    </div>
+    <div class="reassure">考える時間はいくらとっても大丈夫です。急かすことはありません。</div>
+  </div>
+</div>
+
+<!-- 完了 -->
+<div id="screen-done" class="screen hidden">
+  <div class="center-card">
+    <h1>面談は以上です。ありがとうございました</h1>
+    <p>3営業日以内に担当者からご連絡いたします。このページは閉じていただいて構いません。</p>
+  </div>
+</div>
+
+<!-- 設定パネル -->
+<div id="overlay" class="hidden"></div>
+<div id="settings-panel" class="hidden">
+  <h2>設定</h2>
+  <div class="setting-row">
+    <div>バーチャル対面モード<small>面接官が質問を読み上げ、声で回答できます</small></div>
+    <button class="toggle" id="voice-toggle" aria-pressed="false"></button>
+  </div>
+  <div class="setting-row">
+    <div>自分の発言テキストを表示<small>音声モード時。誤変換が気になる方はOFFのまま</small></div>
+    <button class="toggle on" id="transcript-toggle" aria-pressed="true"></button>
+  </div>
+  <button class="btn-primary" id="settings-close">閉じる</button>
+</div>
+
+<script>
+/* ============================================================
+   設定(デプロイ時にここだけ書き換える)
+   ============================================================ */
+const CONFIG = {
+  // SupabaseプロジェクトのEdge Function ベースURL
+  // 例: "https://abcdefgh.supabase.co/functions/v1"
+  FUNCTIONS_BASE: "https://ejiokjjxnflaabvstkwv.supabase.co/functions/v1",
+  // v4.1: 実写級リアルタイムアバター(HeyGen LiveAvatar)
+  //  "auto" = サーバ側にLIVEAVATAR_API_KEYがあれば実写、なければSVG(推奨)
+  //  "off"  = 常にSVG(A/B比較の対照群を作りたいときはこちら)
+  //   URLに ?avatar=off が付いていれば、この設定より優先して常にSVGになる
+  //   (管理画面の「テストモード」で発行したURL。A/B比較の対照群にも使う)
+  REAL_AVATAR: "auto",
+  // v4.8: AIの発話中に候補者が話し始めたらAIが黙って聞く(割り込み対応)
+  BARGE_IN: true,
+  // v5.1: 無音での自動送信(ミリ秒)。ボタンを押さなくても会話が続く。
+  //   短すぎると「考えている間」に切られ、長すぎると待たされる。2000〜3000が目安。
+  //   0 にすると自動送信を切り、従来どおりボタン確定のみになる。
+  AUTO_SUBMIT_MS: 2500,
+  // v5.1: 投機的生成。無音がこの時間続いたら、その時点の認識テキストで
+  //   AI応答の先行生成をサーバーに依頼する(結果はサーバー側にキャッシュ)。
+  //   話し終わり確定時にテキストが一致すれば、生成済みの応答が即座に返る。
+  //   人の面接官が「聞きながら考えている」状態の再現。0で無効。
+  SPECULATE_MS: 1200,
+};
+
+/* ============================================================
+   状態
+   ============================================================ */
+const token = new URLSearchParams(location.search).get("t");
+// v5.1: 管理画面の「テストモード」で発行されたURLは実写アバターを使わない
+if (new URLSearchParams(location.search).get("avatar") === "off") CONFIG.REAL_AVATAR = "off";
+const $ = (id) => document.getElementById(id);
+
+// AI面接官プリセット(interview-chat側の定義と対応。発行側が指定)
+// rate/pitch は声の個性(佐藤=やや高くゆったり、田中=低めで速い、鈴木=落ち着き)
+const INTERVIEWERS = {
+  sato:   { name:"佐藤 みなみ", initial:"佐", bg:"#e1f5ee", fg:"#085041", rate:0.96, pitch:1.12 },
+  tanaka: { name:"田中 健",     initial:"田", bg:"#e6f1fb", fg:"#0c447c", rate:1.04, pitch:0.88 },
+  suzuki: { name:"鈴木 恵子",   initial:"鈴", bg:"#eeedfe", fg:"#3c3489", rate:0.9,  pitch:1.0  },
+};
+
+// ---- 動画アバター設定(方式B: 事前生成クリップのループ切替) ----
+// HeyGen等で生成したmp4のURLを設定すると、SVGの代わりに実写品質の
+// 動画アバターで表示される。未設定(null)の面接官はSVGへ自動フォールバック。
+// クリップの仕様と生成手順は docs/avatar_video_spec.md を参照。設定例:
+//   sato: { idle:"avatars/sato_idle.mp4", talking:"avatars/sato_talking.mp4", nod:"avatars/sato_nod.mp4" },
+const AVATAR_VIDEOS = {
+  sato: null,
+  tanaka: null,
+  suzuki: null,
+};
+
+const state = {
+  currentQuestionId: null,
+  busy: false,
+  completed: false,
+  interrupted: false,
+  showTranscript: true,   // 1-3: 対面(音声)モードでは候補者発言をデフォルト非表示
+  voiceMode: false,
+  interviewer: INTERVIEWERS.sato,
+  interviewerKey: "sato",
+  cameraOn: false,
+  lastAiText: "",
+  questionShownAt: null,  // KPI: 応答時間(質問表示→回答送信)
+  listening: false,
+};
+
+function makeAvatar(sizeClassTarget){
+  const iv = state.interviewer;
+  const d = document.createElement("div");
+  d.className = "avatar";
+  d.style.background = iv.bg; d.style.color = iv.fg;
+  d.textContent = iv.initial;
+  return d;
+}
+function applyInterviewerHeader(){
+  const iv = state.interviewer;
+  const hd = $("hd-avatar");
+  hd.style.background = iv.bg; hd.style.color = iv.fg;
+  hd.textContent = iv.initial;
+  hd.classList.remove("hidden");
+  $("hd-title").innerHTML =
+    `面談担当:${iv.name}<small id="tenant-name">${$("tenant-name").textContent}</small>`;
+}
+
+/* ============================================================
+   通信ユーティリティ:楽観的UI更新 + リトライキュー
+   送信失敗した書き込みはlocalStorageに退避し、指数バックオフで再送
+   ============================================================ */
+const QUEUE_KEY = "kurusapo_retry_" + (token || "");
+function loadQueue(){ try{return JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]")}catch{return []} }
+function saveQueue(q){ localStorage.setItem(QUEUE_KEY, JSON.stringify(q)) }
+
+async function callFn(fn, payload, {queueOnFail=false} = {}){
+  try{
+    const r = await fetch(`${CONFIG.FUNCTIONS_BASE}/${fn}`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ token, ...payload }),
+    });
+    if(!r.ok){
+      const e = await r.json().catch(()=>({}));
+      throw Object.assign(new Error(e.error||"http_"+r.status), {status:r.status, code:e.error});
+    }
+    return await r.json();
+  }catch(err){
+    if(queueOnFail && !err.status){ // ネットワーク断のみキュー退避
+      const q = loadQueue(); q.push({fn, payload, ts:Date.now()}); saveQueue(q);
+    }
+    throw err;
+  }
+}
+let retryTimer = null;
+function scheduleRetry(delay=3000){
+  if(retryTimer) return;
+  retryTimer = setTimeout(async ()=>{
+    retryTimer = null;
+    const q = loadQueue();
+    if(!q.length) return;
+    const item = q[0];
+    try{ await callFn(item.fn, item.payload); q.shift(); saveQueue(q);
+         if(q.length) scheduleRetry(1000); }
+    catch{ scheduleRetry(Math.min(delay*2, 60000)); }
+  }, delay);
+}
+window.addEventListener("online", ()=>scheduleRetry(500));
+
+/* ============================================================
+   画面制御
+   ============================================================ */
+function show(id){
+  ["screen-loading","screen-error","screen-consent","screen-mode","screen-chat","screen-done"]
+    .forEach(s => $(s).classList.toggle("hidden", s !== id));
+}
+function showError(title, body){
+  $("error-title").textContent = title;
+  $("error-body").textContent = body;
+  show("screen-error");
+}
+function banner(text, ms=8000){
+  const b = $("banner");
+  b.textContent = text; b.classList.remove("hidden");
+  if(ms) setTimeout(()=>b.classList.add("hidden"), ms);
+}
+
+/* ---- チャット描画 ---- */
+function addMsg(role, text, {transient=false} = {}){
+  if(role === "me" && state.voiceMode && !state.showTranscript) return null; // 1-3
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  if(transient) div.dataset.transient = "1";
+  let node = div;
+  if(role === "ai"){
+    state.lastAiText = text;
+    state.questionShownAt = Date.now();
+    const row = document.createElement("div");
+    row.className = "ai-row";
+    row.appendChild(makeAvatar());
+    row.appendChild(div);
+    node = row;
+  }
+  $("chat-log").appendChild(node);
+  $("chat-log").scrollTop = $("chat-log").scrollHeight;
+  return div;
+}
+function showTyping(){
+  const t = document.createElement("div");
+  t.className = "typing"; t.id = "typing";
+  t.innerHTML = "考えています<span>.</span><span>.</span><span>.</span>";
+  $("chat-log").appendChild(t);
+  $("chat-log").scrollTop = $("chat-log").scrollHeight;
+}
+function hideTyping(){ $("typing")?.remove(); }
+function setBusy(b){
+  state.busy = b;
+  $("send-btn").disabled = b;
+  $("input").disabled = b;
+  $("face-done").disabled = b;
+}
+
+/* ============================================================
+   初期化:セッション取得 → 同意 or 再開
+   ============================================================ */
+async function init(){
+  if(!token){ showError("URLが正しくありません", "お送りしたご案内のURLからアクセスしてください。"); return; }
+  try{
+    const data = await callFn("session-io", { action:"get_session" });
+    const cc = data.tenant?.consent_config || {};
+    $("tenant-name").textContent = cc.company_name || data.tenant?.name || "";
+    state.interviewerKey = data.session.interviewer_key || "sato";
+    state.interviewer = INTERVIEWERS[state.interviewerKey] || INTERVIEWERS.sato;
+    applyInterviewerHeader();
+    $("consent-intro").textContent =
+      `${cc.company_name || "企業"}の採用選考にご応募いただきありがとうございます。` +
+      `この面談は${cc.vendor_name || "運営会社"}が提供するAIチャットが担当します。` +
+      `以下をご確認のうえ、開始してください。`;
+
+    if(data.session.status === "完了"){ show("screen-done"); return; }
+
+    if(data.session.consent_at){
+      // ---- 途中再開(1-2)----
+      show("screen-chat");
+      state.currentQuestionId = data.session.current_question_id;
+      for(const m of data.messages){
+        if(m.role === "ai") addMsg("ai", m.content);
+        else if(m.role === "candidate") addMsg("me", m.content);
+        // systemメッセージ(スキップ記録等)は候補者には見せない
+      }
+      if(data.messages.length){
+        addMsg("info", "おかえりなさい。先ほどの続きから再開します");
+        callFn("session-io", { action:"update_state", event:"resume" },
+               {queueOnFail:true}).catch(()=>scheduleRetry());
+        const lastAi = [...data.messages].reverse().find(m=>m.role==="ai");
+        if(!lastAi || data.messages[data.messages.length-1].role !== "ai"){
+          // 最後が候補者発話で終わっていた場合、AIの次発話を取得
+          requestAiTurn(null);
+        }
+      }else{
+        requestAiTurn(null); // 同意済みだが未開始
+      }
+    }else{
+      show("screen-consent");
+    }
+  }catch(err){
+    if(err.code === "expired"){
+      showError("この面談の期限が過ぎています",
+        "お手数ですが、ご案内をお送りした担当者までご連絡ください。");
+    }else if(err.code === "not_found" || err.code === "invalid_token"){
+      showError("URLが正しくありません", "お送りしたご案内のURLからアクセスしてください。");
+    }else{
+      showError("通信が不安定です", "電波の良い場所で、ページを再読み込みしてください。回答は保存されています。");
+    }
+  }
+}
+
+/* ---- 同意(1-5)→ モード選択 ---- */
+$("consent-btn").addEventListener("click", async ()=>{
+  $("consent-btn").disabled = true;
+  try{
+    await callFn("session-io", { action:"consent" }); // 同意タイムスタンプをDB記録
+    if(SR){ show("screen-mode"); }
+    else { show("screen-chat"); requestAiTurn(null); } // 非対応ブラウザはチャット直行
+  }catch{
+    $("consent-btn").disabled = false;
+    banner("通信が不安定です。もう一度お試しください。");
+  }
+});
+$("mode-face").addEventListener("click", ()=>{
+  unlockAudio(); // モバイルの自動再生制限をユーザー操作内で解錠
+  show("screen-chat");
+  setVoiceMode(true);
+  requestAiTurn(null);
+});
+$("mode-chat").addEventListener("click", ()=>{
+  show("screen-chat");
+  requestAiTurn(null);
+});
+
+/* ============================================================
+   対話:回答送信 / スキップ / AIターン取得
+   AIは候補者に絶対に被せない(1-1)。送信は候補者のボタン押下のみが起点。
+   ============================================================ */
+/* ---- v3.7: ストリーミング応答 ----
+   Edge Functionが文単位のSSEで返す場合、最初の文が届いた瞬間に
+   しゃべり出す(テキストモードでは打ち込まれるように表示される)。
+   体感の「AIの考え込み時間」が3〜6秒→1秒前後になる。
+   旧Function・非対応環境ではnullを返し、従来の一括応答へフォールバック */
+async function tryStreamTurn(payload){
+  if(!window.ReadableStream || !window.TextDecoder) return null;
+  let r;
+  try{
+    r = await fetch(`${CONFIG.FUNCTIONS_BASE}/interview-chat`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ token, ...payload, stream:true }),
+    });
+  }catch{ return null; } // ネットワーク断→従来経路のリトライ処理に任せる
+  if(!r.ok){
+    const e = await r.json().catch(()=>({}));
+    throw Object.assign(new Error(e.error||"http_"+r.status), {status:r.status, code:e.error});
+  }
+  const ct = r.headers.get("content-type") || "";
+  if(!ct.includes("text/event-stream") || !r.body) return null; // 旧Function(後方互換)
+
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", meta = null, aiDiv = null, fullText = "";
+  const onSentence = (s)=>{
+    hideTyping();
+    fullText += s;
+    if(!aiDiv) aiDiv = addMsg("ai", ""); // チャットログにも常に蓄積(モード切替時用)
+    aiDiv.textContent = fullText;
+    $("chat-log").scrollTop = $("chat-log").scrollHeight;
+    if(state.voiceMode && !speech.muted){
+      $("face-subtitle").textContent = fullText;
+      $("face-status").textContent = "話しています…";
+      $("face-stage").classList.add("speaking");
+      speechEnqueue(s); // 届いた文からしゃべり出す
+    }
+  };
+  if(!state.voiceMode) showTyping();
+  while(true){
+    const {done, value} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let idx;
+    while((idx = buf.indexOf("\n\n")) >= 0){
+      const chunk = buf.slice(0, idx); buf = buf.slice(idx+2);
+      const line = chunk.split("\n").find(l=>l.startsWith("data:"));
+      if(!line) continue;
+      let ev; try{ ev = JSON.parse(line.slice(5).trim()); }catch{ continue; }
+      if(ev.type === "sent") onSentence(ev.text);
+      else if(ev.type === "blocked"){ // コンプライアンス差し替え
+        speechReset(); fullText = "";
+        if(aiDiv) aiDiv.textContent = "";
+        onSentence(ev.text);
+      }
+      else if(ev.type === "done") meta = ev;
+      else if(ev.type === "error")
+        throw Object.assign(new Error(ev.error||"internal"), {code:ev.error});
+    }
+  }
+  hideTyping();
+  if(!meta) throw new Error("stream_incomplete");
+  state.lastAiText = fullText;
+  state.questionShownAt = Date.now(); // KPI: 応答時間の起点
+  if(state.voiceMode){
+    if(meta.is_complete) state.completed = true;
+    speechClose(()=>finishAiTurn(!!meta.is_complete)); // 読み上げが掃けたら次へ
+  }
+  return meta;
+}
+
+async function requestAiTurn(content, event){
+  setBusy(true);
+  speech.muted = false; state.barged = false; // v4.8: 新しいターンで割り込み状態を解除
+  const sentText = (content && !event) ? content : null; // 失敗時の復元用
+  const responseMs = (sentText && state.questionShownAt)
+    ? Date.now() - state.questionShownAt : null; // KPI: 応答時間
+  const payload = content !== null ? { content, event, response_ms: responseMs } : { event };
+  try{
+    let res = await tryStreamTurn(payload); // v3.7: まずストリーミング
+    if(!res){
+      // 従来の一括応答(旧Function・非対応環境・接続失敗時)
+      showTyping();
+      res = await callFn("interview-chat", payload);
+      hideTyping();
+      addMsg("ai", res.message);
+      if(state.voiceMode) faceShowAiTurn(res.message, res.is_complete);
+    }
+    state.currentQuestionId = res.question_id;
+    if(res.is_complete) state.completed = true;
+    if(!state.voiceMode && res.is_complete){
+      setTimeout(()=>show("screen-done"), 2500);
+    }
+  }catch(err){
+    hideTyping();
+    if(err.code === "expired"){
+      showError("この面談の期限が過ぎています", "担当者までご連絡ください。");
+    }else{
+      banner("通信が不安定です。電波の良い場所で、もう一度「回答を送信」を押してください。", 0);
+      scheduleRetry();
+      if(state.voiceMode){
+        // 対面モード: 発話を止め、回答をバッファに戻して再送できる状態に
+        speechReset();
+        if(sentText) recBuffer = sentText;
+        $("face-status").textContent = "通信が不安定です。もう一度「話し終わったら押す」を押してください";
+      }
+      // 候補者の回答を入力欄に復元(再入力させない)。楽観的表示のバブルは
+      // 再送時に二重表示になるため取り除く
+      if(sentText && !$("input").value){
+        const bubbles = $("chat-log").querySelectorAll(".msg.me");
+        const last = bubbles[bubbles.length-1];
+        if(last && last.textContent === sentText) last.remove();
+        $("input").value = sentText; autoGrow();
+      }
+      setTimeout(()=>{ $("banner").classList.add("hidden"); setBusy(false); }, 4000);
+      return;
+    }
+  }
+  setBusy(false);
+  if(!state.voiceMode) $("input").focus();
+}
+
+$("send-btn").addEventListener("click", ()=>{
+  const text = $("input").value.trim();
+  if(!text || state.busy) return;
+  addMsg("me", text);            // 楽観的UI更新
+  $("input").value = ""; autoGrow();
+  requestAiTurn(text);           // interview-chat側で永続化される
+});
+
+/* ---- スキップ(1-6):理由は一切尋ねない ---- */
+$("skip-link").addEventListener("click", (e)=>{
+  e.preventDefault();
+  if(state.busy) return;
+  addMsg("info", "この質問をスキップしました");
+  requestAiTurn("", "skip");
+});
+
+/* ---- 入力欄の自動リサイズ ---- */
+const input = $("input");
+function autoGrow(){ input.style.height="auto"; input.style.height=Math.min(input.scrollHeight,120)+"px"; }
+input.addEventListener("input", autoGrow);
+
+/* ============================================================
+   無操作10分:自動保存+安心表示(離脱扱いにしない)(1-1)
+   離脱ポイントKPIのため中断イベントは記録する
+   ============================================================ */
+let idleTimer = null;
+function resetIdle(){
+  clearTimeout(idleTimer);
+  if(state.completed) return;
+  idleTimer = setTimeout(()=>{
+    banner("回答は自動保存されています。続きはいつでも再開できます。", 0);
+    state.interrupted = true;
+    callFn("session-io", { action:"update_state", event:"interrupt",
+      question_id: state.currentQuestionId }, {queueOnFail:true})
+      .catch(()=>scheduleRetry());
+  }, 10*60*1000);
+}
+["click","keydown","touchstart"].forEach(ev=>document.addEventListener(ev, ()=>{
+  if(state.interrupted && !state.completed){
+    state.interrupted = false;
+    $("banner").classList.add("hidden");
+    callFn("session-io", { action:"update_state", event:"resume" },
+      {queueOnFail:true}).catch(()=>scheduleRetry());
+  }
+  resetIdle();
+}));
+resetIdle();
+
+/* ---- ブラウザ閉じ・バックグラウンド移行時に中断を記録(sendBeacon) ---- */
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "hidden" && !state.completed && token){
+    navigator.sendBeacon(
+      `${CONFIG.FUNCTIONS_BASE}/session-io`,
+      new Blob([JSON.stringify({ token, action:"update_state", event:"interrupt",
+        question_id: state.currentQuestionId })], {type:"application/json"})
+    );
+  }
+});
+
+/* ---- 2分ごとのハートビート(last_activity更新) ---- */
+setInterval(()=>{
+  if(!state.completed && !document.hidden)
+    callFn("session-io", {action:"update_state", event:"heartbeat"}).catch(()=>{});
+}, 2*60*1000);
+
+/* ============================================================
+   バーチャル対面モード(v3.5〜v3.9 対人リアリティ強化)
+   - v3.5 プロソディ: 句読点で変わる「間」・文ごとの速度揺らぎ・答える前の一拍
+   - v3.6 生命感: ゆらぎまばたき/視線サッカード/眉上げ/文間の口閉じ/動画クロスフェード
+   - v3.7 ストリーミング: 文が届き次第しゃべり出す(無言待ち3〜6秒→約1秒)
+   - v3.8 傾聴: 候補者の発話区切りに同期するうなずき・傾聴時の前傾と視線安定
+   - v3.9 声質: Edge Function `tts`(高品質TTS)+音量連動リップシンク。
+           未設定ならWeb Speechへ自動フォールバック(原価0円のまま動く)
+   - STT: SpeechRecognition(continuous=true, lang='ja-JP')。
+     interim結果は画面に出さず内部バッファへ蓄積(誤変換で気を散らさない)
+   - 回答確定は音声でも「回答終了ボタン」方式を維持。自動VAD打ち切りはしない
+   - モバイルでは認識が勝手に止まるため、listening中はonendで自動再開
+   - 非対応ブラウザ(Firefox等)はテキストモードへ自動フォールバック
+   ============================================================ */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const AUTO_SUBMIT_MS = CONFIG.AUTO_SUBMIT_MS ?? 0; // v5.1
+const SPECULATE_MS = CONFIG.SPECULATE_MS ?? 0;       // v5.1
+let recognition = null, recBuffer = "";
+
+function pickJaVoice(){
+  const vs = speechSynthesis.getVoices();
+  // 自然さの高い順に優先(端末により存在する声が異なる)
+  const pref = ["Google 日本語", "Microsoft Nanami", "Microsoft Ayumi", "Kyoko", "O-Ren"];
+  for(const name of pref){
+    const v = vs.find(v=>v.name.includes(name));
+    if(v) return v;
+  }
+  return vs.find(v=>v.lang === "ja-JP") || vs.find(v=>v.lang.startsWith("ja")) || null;
+}
+// 記号類を読み上げ向けに除去
+function ttsClean(text){
+  return text.replace(/[「」『』()()【】*・#]/g, "").replace(/\s+/g, " ").trim();
+}
+/* ---- 発話エンジン(v3.5/v3.7/v3.9):文キュー方式 ----
+   - 文単位のキューに積み、順に再生。ストリーミング応答(v3.7)で届いた文を
+     到着し次第追加できるため、「AIの無言待ち」が体感1秒前後まで縮む
+   - 高品質TTS(Edge Function `tts`。v3.9)が設定されていれば音声を先読み取得、
+     未設定/失敗時はWeb Speechへ自動フォールバック(判定はセッション中1回だけ)
+   - 文末の種類で「間」を変え、文ごとに速度を微妙に揺らす(v3.5)。
+     機械の等間隔リズムを崩すことが、人らしさの最大要因 */
+const speech = {
+  q: [],            // {text, audio(Promise<Blob>|null), pre(ms)}
+  playing: false, closed: true, session: 0,
+  muted: false,     // v4.8: 割り込み後、残りのストリーム文を声に出さない
+  uttering: false,  // 実際に声が出ている瞬間だけtrue(口パク制御用)
+  onAllDone: null,
+};
+let premiumTTS = null;   // null=未判定 / true / false
+let audioCtx = null, curAudio = null;
+
+function splitSentences(text){
+  return ttsClean(text).split(/(?<=[。!?!?])/).map(s=>s.trim()).filter(Boolean);
+}
+function gapAfter(s){ // v3.5: 文末で「間」を変える。質問の後は答えを待つように長めに
+  if(/[??]$/.test(s)) return 380 + Math.random()*240;
+  if(/[!!]$/.test(s)) return 160 + Math.random()*120;
+  return 220 + Math.random()*260;
+}
+
+function speechReset(){
+  speech.session++;
+  speech.q = []; speech.closed = true;
+  speech.playing = false; speech.uttering = false; speech.onAllDone = null;
+  if("speechSynthesis" in window) speechSynthesis.cancel();
+  if(curAudio){ try{ curAudio.pause(); }catch{} curAudio = null; }
+  realAvInterrupt(); // v4.1: 実写アバターの発話も割り込み停止
+  stopSelfPcm();     // v5.0: 内製時のローカルPCM再生も即停止
+}
+function speechEnqueue(text, {pre = 0} = {}){
+  // v5.1: 実写アバター時は文分割しない。
+  //   文ごとに「PCM送信→サーバ側で口の同期映像を生成→配信」の往復が入るため、
+  //   分割すると文間に数秒の空白が生まれる(実測 約3秒)。
+  //   まとめて1発話にすれば生成待ちは1回で済む。
+  //   代償として v3.5 の「文末で間を変える」表現(220〜620ms)は効かなくなるが、
+  //   失う間より削れる待ち時間の方がはるかに大きい。
+  const ss = realAv.active ? [ttsClean(text).trim()].filter(Boolean) : splitSentences(text);
+  ss.forEach((s, i)=>speech.q.push({
+    text: s,
+    audio: realAv.active ? null : prefetchTTS(s),
+    pcm:   realAv.active ? prefetchPCM(s) : null, // v4.1: リアルアバター用
+    pre: i === 0 ? pre : 0,
+  }));
+  ss.forEach(noteAiText);   // v4.8: エコー判定用に自分の発話を記録
+  speech.closed = false;
+  startBargeWatch();        // v4.8: 話している間は割り込みを監視
+  pumpSpeech();
+}
+function speechClose(onAllDone){ // これ以上文は来ない。掃けたらonAllDone
+  speech.closed = true;
+  speech.onAllDone = onAllDone || null;
+  pumpSpeech();
+}
+function speechSay(text, onend){ // 単発発話(再開時の再読み上げ等)
+  speechReset();
+  speechEnqueue(text);
+  speechClose(onend);
+}
+
+async function pumpSpeech(){
+  if(speech.playing) return;
+  if(!speech.q.length){
+    if(speech.closed){
+      avatarTalking(false);
+      if(speech.onAllDone){ const cb = speech.onAllDone; speech.onAllDone = null; cb(); }
+    }
+    return;
+  }
+  speech.playing = true;
+  const my = speech.session;
+  const item = speech.q.shift();
+  if(item.pre) await new Promise(r=>setTimeout(r, item.pre)); // v3.5: 答える前の一拍
+  if(my !== speech.session) return;
+  avatarTalking(true);
+  if(!realAv.active && /[??]$/.test(item.text)) raiseBrows(); // v3.6: 質問文で眉を上げる
+  const done = ()=>{
+    if(my !== speech.session) return;
+    speech.uttering = false;
+    setMouthClosed(); // 文間は口を閉じる(v3.6)
+    setTimeout(()=>{
+      if(my !== speech.session) return;
+      speech.playing = false;
+      pumpSpeech();
+    }, gapAfter(item.text));
+  };
+  const blob = item.audio ? await item.audio : null;
+  if(my !== speech.session) return;
+  speech.uttering = true;
+  if(!videoMode && !realAv.active){
+    setExpression(sentimentOf(item.text)); // v4.3: 文の感情で表情が変わる
+    if(Math.random() < 0.3) blinkOnce(false); // v4.0: フレーズ境界の瞬き
+  }
+  if(realAv.active) realSpeak(item.text, item.pcm, done);     // v4.1: 実写アバターが話す
+  else if(blob) playBlobWithLipSync(blob, item.text, done);
+  else speakWebSpeech(item.text, done);
+}
+
+/* モバイルの自動再生制限対策: ユーザー操作(ボタン押下)の中で音声を解錠 */
+function unlockAudio(){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+  }catch{}
+  // v4.2: リアルアバターの受信音声(WebRTC)も自動再生制限の対象。
+  // ユーザー操作(このボタン押下)の中で明示的に再生を解錠する
+  try{ realAv.room?.startAudio?.(); }catch{}
+  try{ $("real-audio").play().catch(()=>{}); }catch{}
+}
+
+/* Web Speech(フォールバック)。文ごとに速度を±3%揺らす(v3.5) */
+function speakWebSpeech(text, onend){
+  if(!("speechSynthesis" in window)){ onend(); return; }
+  const u = new SpeechSynthesisUtterance(text);
+  const v = pickJaVoice();
+  if(v) u.voice = v;
+  u.lang = "ja-JP";
+  const sm = sentimentOf(text); // v4.3: 感情で声色を微調整
+  u.rate = state.interviewer.rate * (0.97 + Math.random()*0.06) * (sm === "care" ? 0.965 : sm === "warm" ? 1.015 : 1);
+  u.pitch = state.interviewer.pitch + (sm === "warm" ? 0.06 : sm === "care" ? -0.08 : 0);
+  u.onend = onend;
+  u.onerror = onend;
+  speechSynthesis.speak(u);
+}
+
+/* ---- 高品質TTS(v3.9)。tts Functionが未設定(501)なら以後は聞かない ---- */
+function prefetchTTS(text){
+  if(premiumTTS === false) return null;
+  return (async ()=>{
+    try{
+      const r = await fetch(`${CONFIG.FUNCTIONS_BASE}/tts`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token, text, interviewer_key: state.interviewerKey, ...voiceDeltas(text) }),
+      });
+      if(r.status === 501){ premiumTTS = false; return null; }
+      if(!r.ok) return null;
+      premiumTTS = true;
+      return await r.blob();
+    }catch{ return null; }
+  })();
+}
+/* v3.9: 実音量に連動した本物のリップシンク(乱数口パクとの差は歴然) */
+function playBlobWithLipSync(blob, text, onend){
+  const url = URL.createObjectURL(blob);
+  const a = new Audio(url);
+  curAudio = a;
+  let raf = null;
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    const src = audioCtx.createMediaElementSource(a);
+    const an = audioCtx.createAnalyser(); an.fftSize = 256;
+    src.connect(an); an.connect(audioCtx.destination);
+    const buf = new Uint8Array(an.frequencyBinCount);
+    startMouthEngine(); // v4.0: 音量は目標値として口エンジンに渡し、慣性で追従させる
+    const loop = ()=>{
+      an.getByteTimeDomainData(buf);
+      let sum = 0;
+      for(let i = 0; i < buf.length; i++){ const d = (buf[i]-128)/128; sum += d*d; }
+      const rms = Math.sqrt(sum/buf.length);
+      mouthTarget = Math.min(1, rms*7.5);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+  }catch{ /* WebAudio不可でも音声再生は続行(口パクは乱数側) */ }
+  const fin = ()=>{ if(raf) cancelAnimationFrame(raf); URL.revokeObjectURL(url); curAudio = null; onend(); };
+  a.onended = fin; a.onerror = fin;
+  a.play().catch(()=>{ // 自動再生制限で拒否されたらWeb Speechで代読
+    if(raf) cancelAnimationFrame(raf);
+    URL.revokeObjectURL(url); curAudio = null;
+    speakWebSpeech(text, onend);
+  });
+}
+
+/* ============================================================
+   リアルアバター(v4.1): HeyGen LiveAvatar LITEモード
+   - 2026年時点で実写と見分けがつかないレベルのリアルタイムアバター。
+     LITEモードは「こちらが送った音声どおりに口・表情・仕草が動く映像」
+     だけを借りる構成のため、面談ロジック・評価・禁止語検査・TTSは
+     すべて自前のまま(=差別化の中身は変わらず、見た目だけ実写になる)
+   - サーバ(avatar-session Function)にAPIキーが無ければ501 → 何も
+     起きずSVGアバターのまま。既存の「未設定でも完動」原則を維持
+   - 映像/音声はLiveKit(WebRTC)で受信、発話はWebSocketにPCM音声を送る
+   - コスト: 約$0.10/分 ≒ 15分面談で約230円+TTS約8円(対MiAI 1/5以下)
+   ============================================================ */
+const realAv = {
+  active:false, tried:false, ws:null, room:null,
+  session_token:null, session_id:null, keepTimer:null,
+  speakWaiters:new Map(), seq:0,
+  startedAt:0, capTimer:null, // v4.9: 予算キャップ(使用秒数の実測と上限前の降格)
+  mode:null, // v5.0: "liveavatar" | "self"(内製MuseTalkサーバ)
+  pcmSrcs:[], // v5.0: 内製時はローカルでPCM再生(このリストでbarge時に即停止)
+  gotAudioTrack:false, // v5.1: LiveKitから音声トラックが届いたか(LITEモードでは届かない)
+};
+/* v5.0: 内製サーバ用のローカルPCM再生(24kHz 16bit mono)。
+   内製サーバは映像だけを返すため、声はブラウザ側で同時再生する */
+function playPCM(b64, onend){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const raw = atob(b64);
+    const n = raw.length / 2;
+    const buf = audioCtx.createBuffer(1, n, 24000);
+    const ch = buf.getChannelData(0);
+    for(let i = 0; i < n; i++){
+      const lo = raw.charCodeAt(i*2), hi = raw.charCodeAt(i*2+1);
+      let v = (hi << 8) | lo; if(v >= 0x8000) v -= 0x10000;
+      ch[i] = v / 32768;
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf; src.connect(audioCtx.destination);
+    src.onended = ()=>{
+      realAv.pcmSrcs = realAv.pcmSrcs.filter(x=>x!==src);
+      onend && onend();
+    };
+    realAv.pcmSrcs.push(src);
+    src.start();
+    return true;
+  }catch{ return false; }
+}
+function stopSelfPcm(){
+  realAv.pcmSrcs.forEach(s=>{ try{ s.onended=null; s.stop(); }catch{} });
+  realAv.pcmSrcs = [];
+}
+function loadScript(src){
+  return new Promise((res, rej)=>{
+    const s = document.createElement("script");
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+async function realAvatarStart(){
+  if(realAv.tried || CONFIG.REAL_AVATAR === "off") return realAv.active;
+  realAv.tried = true;
+  let info = null; // 失敗時にもサーバ側セッションを止められるよう外に持つ
+  try{
+    info = await callFn("avatar-session", {action:"start", interviewer_key: state.interviewerKey});
+    if(!info?.livekit_url || !info?.ws_url){
+      realStopRequest(info?.session_token, info?.session_id); // 課金リーク封じ
+      return false;
+    }
+    $("face-status").textContent = "面接官を呼んでいます…";
+    await loadScript("https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js");
+    const LK = window.LivekitClient;
+    const room = new LK.Room({ adaptiveStream:true });
+    room.on(LK.RoomEvent.TrackSubscribed, (track)=>{
+      if(track.kind === "video") track.attach($("real-figure"));
+      if(track.kind === "audio"){ track.attach($("real-audio")); realAv.gotAudioTrack = true; }
+    });
+    await room.connect(info.livekit_url, info.livekit_client_token);
+    const ws = new WebSocket(info.ws_url);
+    await new Promise((res, rej)=>{
+      const to = setTimeout(()=>rej(new Error("ws timeout")), 15000);
+      ws.onmessage = (ev)=>{
+        try{
+          const m = JSON.parse(ev.data);
+          if(m.type === "session.state_updated" && m.state === "connected"){ clearTimeout(to); res(); }
+          handleRealEvent(m);
+        }catch{}
+      };
+      ws.onerror = ()=>{ clearTimeout(to); rej(new Error("ws error")); };
+    });
+    ws.onmessage = (ev)=>{ try{ handleRealEvent(JSON.parse(ev.data)); }catch{} };
+    ws.onclose = ()=>{ if(realAv.active) realAvatarStop(true); }; // 切断時も課金を止める
+    realAv.ws = ws; realAv.room = room;
+    realAv.session_token = info.session_token; realAv.session_id = info.session_id;
+    realAv.keepTimer = setInterval(()=>{
+      try{ ws.send(JSON.stringify({type:"session.keep_alive", event_id:"ka"+(++realAv.seq)})); }catch{}
+    }, 60000);
+    realAv.active = true;
+    realAv.mode = "liveavatar";
+    realAv.startedAt = Date.now();
+    // v4.10: これは面談中の降格装置ではない(既定35分>面談30分で発動しない)。
+    // タブ放置等でサーバ側上限に達する寸前、発話の切れ目で綺麗に閉じる保護
+    const capMs = Math.max(30, (info.max_session_duration || 180) - 15) * 1000;
+    realAv.capTimer = setTimeout(function waitQuiet(){
+      if(!realAv.active) return;
+      if(speech.playing || speech.uttering){ realAv.capTimer = setTimeout(waitQuiet, 800); return; }
+      realAvatarStop(true);
+    }, capMs);
+    try{ await room.startAudio?.(); }catch{ /* 次のボタン押下(unlockAudio)で解錠される */ }
+    $("real-figure").classList.remove("hidden");
+    $("face-figure").classList.add("hidden");
+    $("face-video-wrap").classList.add("hidden");
+    stopMouth(); stopMouthEngine(); stopBlink(); stopGaze(); // SVG演出は不要
+    return true;
+  }catch(e){
+    console.warn("リアルアバター未接続(SVGで続行)", e);
+    realAvatarStop(false);
+    realStopRequest(info?.session_token, info?.session_id); // 接続途中失敗でも課金を止める
+    return false;
+  }
+}
+/* v5.0: 内製アバターサーバへの接続。
+   同じWSプロトコル(agent.speak等)だが、映像はJPEGフレーム(バイナリ)で届き
+   canvasに描画、音声はローカルでPCMを同時再生する */
+async function selfAvatarConnect(info){
+  try{
+    const ws = new WebSocket(info.ws_url);
+    ws.binaryType = "arraybuffer";
+    const canvas = $("self-figure"), ctx = canvas.getContext("2d");
+    let gotFrame = false;
+    await new Promise((res, rej)=>{
+      const to = setTimeout(()=>rej(new Error("self ws timeout")), 15000);
+      ws.onmessage = async (ev)=>{
+        if(typeof ev.data === "string"){
+          try{
+            const m = JSON.parse(ev.data);
+            if(m.type === "session.state_updated" && m.state === "connected"){ clearTimeout(to); res(); }
+            handleRealEvent(m);
+          }catch{}
+        }
+      };
+      ws.onerror = ()=>{ clearTimeout(to); rej(new Error("self ws error")); };
+    });
+    ws.onmessage = async (ev)=>{
+      if(typeof ev.data === "string"){
+        try{ handleRealEvent(JSON.parse(ev.data)); }catch{}
+        return;
+      }
+      // バイナリ=JPEGフレーム。デコードしてcanvasへ
+      try{
+        const bmp = await createImageBitmap(new Blob([ev.data], {type:"image/jpeg"}));
+        ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+        bmp.close?.();
+        if(!gotFrame){ gotFrame = true; }
+      }catch{}
+    };
+    ws.onclose = ()=>{ if(realAv.active) realAvatarStop(true); };
+    realAv.ws = ws;
+    realAv.session_token = info.session_token; realAv.session_id = info.session_id;
+    realAv.mode = "self";
+    realAv.keepTimer = setInterval(()=>{
+      try{ ws.send(JSON.stringify({type:"session.keep_alive", event_id:"ka"+(++realAv.seq)})); }catch{}
+    }, 60000);
+    realAv.active = true;
+    realAv.startedAt = Date.now();
+    $("self-figure").classList.remove("hidden");
+    $("face-figure").classList.add("hidden");
+    $("face-video-wrap").classList.add("hidden");
+    stopMouth(); stopMouthEngine(); stopBlink(); stopGaze();
+    return true;
+  }catch(e){
+    console.warn("内製アバター未接続(SVGで続行)", e);
+    realAvatarStop(false);
+    return false;
+  }
+}
+function handleRealEvent(m){
+  if(m.type === "agent.speak_ended"){
+    const cb = realAv.speakWaiters.get(m.event_id);
+    if(cb){ realAv.speakWaiters.delete(m.event_id); cb(); }
+  }
+}
+function realAvListen(on){
+  if(!realAv.active || realAv.ws?.readyState !== 1) return;
+  try{
+    realAv.ws.send(JSON.stringify({
+      type: on ? "agent.start_listening" : "agent.stop_listening",
+      event_id: "ls" + (++realAv.seq),
+    }));
+  }catch{}
+}
+function realAvInterrupt(){
+  if(!realAv.active || realAv.ws?.readyState !== 1) return;
+  try{ realAv.ws.send(JSON.stringify({type:"agent.interrupt"})); }catch{}
+  realAv.speakWaiters.forEach(cb=>cb()); realAv.speakWaiters.clear();
+}
+/* サーバ側セッションを確実に止める(keepalive: 画面遷移中でも届く=課金を止める) */
+function realStopRequest(sessionToken, sessionId){
+  if(!sessionToken) return;
+  const elapsed_s = realAv.startedAt ? Math.round((Date.now() - realAv.startedAt)/1000) : 0;
+  try{
+    fetch(`${CONFIG.FUNCTIONS_BASE}/avatar-session`, {
+      method:"POST", keepalive:true, headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({token, action:"stop", session_token: sessionToken, session_id: sessionId, elapsed_s}),
+    });
+  }catch{}
+}
+function realAvatarStop(callServer = true){
+  clearInterval(realAv.keepTimer); realAv.keepTimer = null;
+  clearTimeout(realAv.capTimer); realAv.capTimer = null;
+  try{ realAv.ws?.close(); }catch{}
+  try{ realAv.room?.disconnect(); }catch{}
+  if(callServer) realStopRequest(realAv.session_token, realAv.session_id);
+  realAv.ws = null; realAv.room = null; realAv.session_token = null; realAv.startedAt = 0;
+  const wasActive = realAv.active;
+  realAv.active = false; realAv.tried = false; // 再トグルで再接続できるように
+  realAv.speakWaiters.forEach(cb=>cb()); realAv.speakWaiters.clear();
+  stopSelfPcm(); realAv.mode = null;
+  $("real-figure").classList.add("hidden");
+  $("self-figure").classList.add("hidden");
+  if(wasActive && state.voiceMode){ // SVGへ静かに復帰
+    $("face-figure").classList.remove("hidden");
+    renderFigure(); setupAvatarVideos();
+    if(!videoMode){ startBlink(); startGaze(); startMouth(); }
+  }
+}
+window.addEventListener("pagehide", ()=>{ if(realAv.active) realAvatarStop(true); });
+/* リアルアバター用の音声先読み(PCM 16bit/24kHz base64) */
+function prefetchPCM(text){
+  return (async ()=>{
+    try{
+      const r = await fetch(`${CONFIG.FUNCTIONS_BASE}/tts`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token, text, interviewer_key: state.interviewerKey, format:"pcm_24k" }),
+      });
+      if(!r.ok) return null;
+      return (await r.json()).pcm_base64 || null;
+    }catch{ return null; }
+  })();
+}
+/* 1文をリアルアバターに話させる。PCMをWebSocketで約1秒ずつ送る */
+function realSpeak(text, pcmPromise, onend){
+  (async ()=>{
+    const pcm = pcmPromise ? await pcmPromise : await prefetchPCM(text);
+    if(!realAv.active || realAv.ws?.readyState !== 1){
+      speakWebSpeech(text, onend); return;
+    }
+    if(!pcm){
+      // 高品質TTSが使えない=実写アバターの口を動かせない。
+      // 「実写の顔+機械音声+口が動かない」という不気味な混在を避け、
+      // 実写を畳んでSVGアバターに降格する(GOOGLE_TTS_API_KEY未設定時など)
+      console.warn("PCM音声を取得できないため実写アバターをSVGに切り替えます");
+      realAvatarStop(true);
+      speakWebSpeech(text, onend);
+      return;
+    }
+    const id = "sp" + (++realAv.seq);
+    let done = false;
+    const finish = ()=>{ if(done) return; done = true; realAv.speakWaiters.delete(id); onend(); };
+    realAv.speakWaiters.set(id, finish);
+    // v5.0: 内製サーバは映像のみ返す。声はローカルで同時再生し、
+    // 音声の終了を完了合図にする(映像は数百ms遅れて閉じても違和感がない)
+    // v5.1: 内製サーバは常に映像のみ。LiveAvatarもLITEモードでは音声トラックを
+    // 返さない場合があるため、音声トラック未受信ならローカルでPCMを鳴らす
+    // (二重再生を避けるため gotAudioTrack が立っている時は鳴らさない)
+    if(realAv.mode === "self" || !realAv.gotAudioTrack){
+      if(!playPCM(pcm, finish)) { speakWebSpeech(text, finish); }
+    }
+    // base64を64,000文字(=48,000バイト=約1秒)ずつ。4の倍数なので分割してもデコード可能
+    const CHUNK = 64000;
+    for(let i = 0; i < pcm.length; i += CHUNK){
+      realAv.ws.send(JSON.stringify({type:"agent.speak", audio: pcm.slice(i, i+CHUNK), event_id:id}));
+    }
+    realAv.ws.send(JSON.stringify({type:"agent.speak_end", event_id:id}));
+    // 予備タイマー: 音声長+4秒でイベント欠落時も必ず先へ進む
+    const secs = (pcm.length * 0.75) / 48000;
+    setTimeout(finish, (secs + 4) * 1000);
+  })();
+}
+
+/* ============================================================
+   v4.8 B4: 割り込み対応(barge-in)
+   人の会話は「話し終わるのを待つ」ものではない。候補者がAIの発話中に
+   話し始めたら、AIは即座に黙って聞く。これが無いと根本的に
+   「一方通行のシステム」と感じられる。
+   - AI発話中だけ監視用の音声認識を回す
+   - 自声のエコー対策: 直近にAIが話した文の正規化文字列に含まれる
+     聞き取り結果は無視する(スピーカー出力の拾い込みを弾く)
+   - 遮った瞬間の候補者の言葉はrecBufferに引き継ぎ、失わない
+   ============================================================ */
+let bargeRec = null, bargeBuf = "", aiRecentNorm = "";
+let bargeSeeded = false; // v5.1: 割り込みで引き継いだ文字しか無い状態か
+let bargeLastAt = 0;     // v5.1改2: 非エコー断片を最後に貯めた時刻(時間減衰用)
+function normJa(t){ return String(t).replace(/[\s、。,.!?!?・…〜ー]/g, ""); }
+// v5.1改: 照合バッファを400→1200文字に拡張。長い自己紹介の途中で
+//   前半部分がバッファから押し出され、そのエコーが「本人の声」と誤判定されていた
+function noteAiText(t){ aiRecentNorm = (aiRecentNorm + normJa(t)).slice(-1200); }
+/* v5.1: 自声エコーの判定を「完全一致」から「類似度」に変更。
+   スピーカーから回り込んだAIの声は認識が崩れるため、部分文字列一致では
+   すり抜けてアバターが自分の声に反応してしまっていた。
+   2文字組(bigram)の重なり率で見れば、崩れていてもエコーと判定できる。 */
+function echoLikeness(heardNorm){
+  if(!heardNorm || heardNorm.length < 2 || !aiRecentNorm) return 0;
+  let hit = 0, total = 0;
+  for(let i = 0; i < heardNorm.length - 1; i++){
+    total++;
+    if(aiRecentNorm.includes(heardNorm.slice(i, i + 2))) hit++;
+  }
+  return total ? hit / total : 0;
+}
+const ECHO_RATIO = 0.5; // これ以上重なっていれば自分の声とみなす
+/* v5.1改3: 判定思想の転換。
+   ブラウザの音声認識はエコー除去(AEC)を保証せず、AIの声を「別表記」
+   (漢字→ひらがな等)で書き起こすため、表記ベースの類似度では
+   エコーを確実には見抜けないことが実測で判明した。
+   そこで割り込みは「エコーでない声」ではなく「明確な割り込みの言葉」で
+   始まった時だけ発火させる。面接で人が話を遮る時はほぼ必ず
+   『すみません』『ちょっと』等の切り出しから入る。
+   トレードオフ: 前置きなしの自由な割り込みは拾えなくなるが、
+   誤爆(会話が飛ぶ)の方が候補者体験への実害が桁違いに大きい。 */
+function kanaFold(t){ // カタカナ→ひらがな
+  return String(t).replace(/[\u30a1-\u30f6]/g, (c)=>String.fromCharCode(c.charCodeAt(0) - 0x60));
+}
+const INTENT_MARKERS = [
+  "すみません","すいません","ごめんなさい","ちょっと","まって","待って",
+  "あのー","えっと","質問","しつもん","わからない","分からない","わかりません",
+  "もういちど","もう一度","きこえ","聞こえ","とめて","止めて"
+];
+function startBargeWatch(){
+  if(!CONFIG.BARGE_IN || bargeRec || !SR || !state.voiceMode || state.listening) return;
+  bargeBuf = "";
+  try{
+    bargeRec = new SR();
+    bargeRec.lang = "ja-JP"; bargeRec.continuous = true; bargeRec.interimResults = true;
+    bargeRec.onresult = (e)=>{
+      let fin = "", interim = "";
+      for(let i = e.resultIndex; i < e.results.length; i++){
+        const t = e.results[i][0].transcript;
+        if(e.results[i].isFinal) fin += t; else interim += t;
+      }
+      // v5.1改3: 表記ベースのエコー判定は放棄(かな/漢字の表記揺れで見抜けない)。
+      //   代わりに「割り込みの切り出し言葉」で始まった時だけ発火する。
+      if(Date.now() - bargeLastAt > 3000) bargeBuf = ""; // 散発ノイズの時間減衰
+      if(fin){ bargeBuf += fin; bargeLastAt = Date.now(); }
+      const heardRaw = (bargeBuf + interim).trim();
+      const folded = kanaFold(normJa(heardRaw));
+      if(folded.length < 6) return; // 咳・物音レベルは無視
+      // AI自身が直近に言った言葉のマーカー(例:「あ、すみません」)は無効化して誤爆を防ぐ
+      const aiKana = kanaFold(aiRecentNorm);
+      const hit = INTENT_MARKERS.some((m)=>{
+        const fm = kanaFold(m);
+        if(aiKana.includes(fm)) return false;     // AIが最近使った言葉は割り込み根拠にしない
+        return folded.startsWith(fm) || (fm.length >= 3 && folded.includes(fm));
+      });
+      if(!hit) return;
+      triggerBarge(heardRaw);
+    };
+    bargeRec.onend = ()=>{ if(bargeRec){ try{ bargeRec.start(); }catch{} } };
+    bargeRec.start();
+  }catch{ bargeRec = null; }
+}
+function stopBargeWatch(){
+  const r = bargeRec; bargeRec = null;
+  try{ r?.stop(); }catch{}
+}
+function triggerBarge(heardText){
+  stopBargeWatch();
+  // v5.1: 割り込みで引き継いだ文字は、それ自体では自動送信の根拠にしない。
+  //   万一エコーで誤発火しても、候補者が実際に話し出すまで送信されない。
+  bargeSeeded = true;
+  state.barged = true;
+  speech.muted = true;      // このターンの残り文は声に出さない(画面には出る)
+  speechReset();            // 声・キュー・実写アバターの発話を即停止
+  callFn("session-io", {action:"update_state", event:"interrupt"}).catch(()=>{});
+  $("face-stage").classList.remove("speaking");
+  avatarTalking(false);
+  startListening();
+  recBuffer = heardText;    // 遮った瞬間の言葉を回答の先頭として引き継ぐ
+  $("face-status").textContent = "どうぞ、お話しください";
+}
+
+/* 回答直後の相槌(v3.5改)。人は即答しないので一拍(約0.3秒)置いてから話し始め、
+   直前と同じ相槌は使わない。同じキューに積むため、後からストリーミングで
+   届く本文が相槌の直後に自然に続く(v3.7) */
+const FILLERS = ["はい。", "はい、ありがとうございます。", "なるほど。", "うんうん、はい。", "ええ、ええ。"];
+let lastFiller = -1;
+function speakFiller(){
+  if(!state.voiceMode || speech.muted) return;
+  // v5.1: 実写アバター時は相槌を打たない。
+  //   SVGならローカル再生で即座に鳴り、LLM生成の間を埋められた。
+  //   だが実写では相槌も「PCM送信→サーバ側で口の同期映像を生成→配信」を通るため、
+  //   相槌ぶんの往復が丸ごと上乗せされ、無音が2箇所に分かれてしまう
+  //   (話し終わり→[約3秒]→「なるほど。」→[約3秒]→本題)。
+  //   相槌を省けば往復は1回になり、無音は1箇所にまとまる。
+  //   受け止めの仕草は avatarNod() 側で表現する。
+  if(realAv.active) return;
+  let i;
+  do{ i = Math.floor(Math.random()*FILLERS.length); }while(i === lastFiller);
+  lastFiller = i;
+  speechEnqueue(FILLERS[i], { pre: 280 + Math.random()*240 });
+}
+
+/* ---- v4.8 B5: 沈黙への声かけ ----
+   人の面接官は、候補者が考え込んでいたら急かさず一声かける。
+   ・まだ何も話していない12秒 → 「ごゆっくりで大丈夫ですよ」
+   ・ひととおり話して20秒無音 → ボタンの案内
+   どちらも1問につき1回まで。「急かさない」設計原則(ボタン方式)は維持 */
+let silenceTimer = null, lastHeardAt = 0, silenceStage = 0;
+// v5.1: 投機的生成の状態。specText=先行生成を依頼したテキスト、
+// specPromise=そのリクエスト(確定時に短時間だけ待ち合わせてキャッシュヒットさせる)
+let specText = "", specPromise = null, specCount = 0;
+function fireSpeculation(text){
+  specText = text; specCount++;
+  specPromise = fetch(`${CONFIG.FUNCTIONS_BASE}/interview-chat`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, content: text, speculative: true }),
+  }).catch(()=>{}); // 失敗しても通常経路が生きているので握りつぶす
+}
+function promptSay(t){
+  noteAiText(t); // 自声エコー対策に登録してから話す
+  backchannelSay(t, 0.95);
+}
+function startSilenceWatch(){
+  stopSilenceWatch();
+  lastHeardAt = Date.now(); silenceStage = 0;
+  silenceTimer = setInterval(()=>{
+    if(!state.listening || speech.playing || backTalking || state.busy) return;
+    const quiet = Date.now() - lastHeardAt;
+    // v5.1: 投機的生成。回答があり少し黙ったら、その時点のテキストで先行生成。
+    //   話が続いてテキストが変わったら、次の無音でもう一度依頼し直す
+    //   (サーバー側キャッシュは上書きされる)。1問につき4回まで。
+    if(SPECULATE_MS > 0 && quiet > SPECULATE_MS && specCount < 4){
+      const t = recBuffer.trim();
+      if(t && t !== specText) fireSpeculation(t);
+    }
+    if(silenceStage === 0 && !recBuffer.trim() && quiet > 12000){
+      silenceStage = 1;
+      promptSay("ごゆっくりで大丈夫ですよ。思いついたところからで構いません。");
+    }else if(AUTO_SUBMIT_MS > 0 && recBuffer.trim() && !bargeSeeded && quiet > AUTO_SUBMIT_MS){
+      // v5.1: 回答があり一定時間の無音が続いたら自動で確定する。
+      //   人は「話し終わったら黙る」ので、それを話し終わりの合図として扱う。
+      //   ボタンは残す(自動判定が早すぎたと感じた人の保険 + 手動で確定したい人向け)
+      submitAnswer(true);
+    }else if(silenceStage <= 1 && recBuffer.trim() && quiet > 20000){
+      silenceStage = 2;
+      promptSay("だいたいお話しいただけましたら、下のボタンを押してくださいね。");
+    }
+  }, 500); // v5.1: 3000→500ms。投機(1.2秒)と自動送信(2.5秒)のしきい値を正しく効かせる
+}
+function stopSilenceWatch(){ clearInterval(silenceTimer); silenceTimer = null; }
+
+function startListening(){
+  if(!SR || state.completed) return;
+  recBuffer = "";
+  specText = ""; specPromise = null; specCount = 0; bargeSeeded = false; // v5.1
+  state.listening = true;
+  recognition = new SR();
+  recognition.lang = "ja-JP";
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.onresult = (e)=>{
+    lastHeardAt = Date.now(); // v4.8: 何か聞こえた=沈黙タイマーを巻き戻す
+    let finalized = false;
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      if(e.results[i].isFinal){
+        const t = e.results[i][0].transcript;
+        const nt = normJa(t);
+        // v4.8: 直前に自分(AI)が発した声かけのエコーは回答に混ぜない
+        // v5.1: 完全一致に加えて類似度でもエコーを除外
+        if(nt.length >= 4 && (aiRecentNorm.includes(nt) || echoLikeness(nt) >= ECHO_RATIO)) continue;
+        recBuffer += t; finalized = true; bargeSeeded = false; // v5.1: 本人の発話を確認
+      }
+    }
+    // v3.8: 候補者が一区切り話すたびにうなずく(タイマーではなく発話に同期)。
+    // 人の面接官の相槌は「相手の間」に打たれる。3.5秒以内の連続は抑制
+    if(finalized) nodOnSpeech();
+    // 文字起こし表示ONのときだけ、確定分を字幕枠に薄く反映
+    if(state.showTranscript && recBuffer)
+      $("face-subtitle").textContent = recBuffer;
+  };
+  recognition.onend = ()=>{ if(state.listening){ try{ recognition.start(); }catch{} } };
+  recognition.onerror = (e)=>{
+    if(e.error === "not-allowed" || e.error === "service-not-allowed"){
+      banner("マイクを利用できないため、テキストモードに切り替えました。");
+      setVoiceMode(false);
+    }
+  };
+  try{ recognition.start(); }catch{}
+  $("face-stage").classList.add("listening");
+  startSilenceWatch(); // v4.8: 沈黙への声かけ
+  realAvListen(true); // v4.1: 実写アバターを傾聴姿勢に
+  $("face-status").textContent = AUTO_SUBMIT_MS > 0
+    ? "マイクで回答を受け付けています。話し終えるとそのまま次に進みます"
+    : "マイクで回答を受け付けています。話し終わったらボタンを押してください";
+  // うなずきの本線は発話同期(nodOnSpeech)。これは無音が続いた場合の予備
+  clearInterval(nodTimer);
+  nodTimer = setInterval(avatarNod, 9500);
+}
+function stopListening(){
+  state.listening = false;
+  clearInterval(nodTimer);
+  stopSilenceWatch(); // v4.8
+  realAvListen(false); // v4.1
+  $("face-stage").classList.remove("listening");
+  try{ recognition?.stop(); }catch{}
+}
+let nodTimer = null;
+let lastListenNod = 0;
+function nodOnSpeech(){ // v3.8: 発話の区切りに同期する相槌(3.5秒スロットル)
+  const now = Date.now();
+  if(now - lastListenNod < 3500) return;
+  lastListenNod = now;
+  avatarNod();
+  maybeBackchannel(); // v4.4: ときどき小さく声も出す
+}
+
+/* ---- v4.4: 声の相槌(バックチャネル) ----
+   人の面接官は聞きながら小さく「ええ」「はい」と声を出す。
+   候補者の発話が「確定した区切り」= 自然な間にだけ発するため、
+   声が重なるリスクは低い(端末のエコーキャンセルで認識への混入も防がれる)。
+   頻度は控えめ(区切りの3割・最低9秒間隔)、音量も本編より小さい */
+const BACKCHANNELS = ["ええ。", "はい。", "うんうん。", "ええ、ええ。"];
+let lastBackchannel = 0, lastBackIdx = -1;
+function maybeBackchannel(){
+  if(!state.voiceMode || !state.listening || speech.playing || state.busy) return;
+  const now = Date.now();
+  if(now - lastBackchannel < 9000) return;
+  if(Math.random() > 0.3) return;
+  lastBackchannel = now;
+  let i;
+  do{ i = Math.floor(Math.random()*BACKCHANNELS.length); }while(i === lastBackIdx);
+  lastBackIdx = i;
+  backchannelSay(BACKCHANNELS[i]);
+}
+async function backchannelSay(t, vol = 0.45){
+  if(realAv.active){ // 実写アバターなら口も動く(realSpeakを単発利用)
+    realSpeak(t, null, ()=>{});
+    return;
+  }
+  backTalking = true;
+  const doneBack = ()=>{ backTalking = false; mouthTarget = 0; };
+  if(premiumTTS){
+    try{
+      const r = await fetch(`${CONFIG.FUNCTIONS_BASE}/tts`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ token, text: t, interviewer_key: state.interviewerKey }),
+      });
+      if(r.ok){
+        const a = new Audio(URL.createObjectURL(await r.blob()));
+        a.volume = vol; // 相槌は控えめ、声かけは通常音量
+        a.onplay = ()=>{ mouthTarget = 0.32; };
+        a.onended = ()=>{ URL.revokeObjectURL(a.src); doneBack(); };
+        a.onerror = doneBack;
+        a.play().catch(doneBack);
+        return;
+      }
+    }catch{ /* Web Speechへ */ }
+  }
+  if("speechSynthesis" in window){
+    const u = new SpeechSynthesisUtterance(t);
+    const v = pickJaVoice(); if(v) u.voice = v;
+    u.lang = "ja-JP"; u.volume = vol;
+    u.rate = state.interviewer.rate; u.pitch = state.interviewer.pitch;
+    u.onstart = ()=>{ mouthTarget = 0.3; };
+    u.onend = doneBack; u.onerror = doneBack;
+    speechSynthesis.speak(u);
+  }else doneBack();
+}
+
+/* ---- 面接官キャラクター(ビジネス服装のSVG。口パク+まばたき) ----
+   MiAIの「企業の顔としてふさわしい服装・ふるまい」に相当する見た目を
+   外部素材なし(=原価0円)で提供する。イラスト素材に差し替える場合は
+   characterSVGの戻り値を<img>タグに変えるだけでよい。 */
+function characterSVG(key){
+  const skin = "#f2d5bc", skinShade = "#e2bd9e", cheek = "#efb39a";
+  const C = {
+    sato:   { hair:"#4a3428", hairHi:"#6b4d3a", suit:"#2f6e64", suitDk:"#255950", shirt:"#ffffff" },
+    tanaka: { hair:"#26211f", hairHi:"#3d3531", suit:"#2b3a55", suitDk:"#223047", shirt:"#ffffff", tie:"#8a3038" },
+    suzuki: { hair:"#7a737c", hairHi:"#96909a", suit:"#5a4a7a", suitDk:"#4a3d66", shirt:"#fbf7ef" },
+  }[key] || { hair:"#4a3428", hairHi:"#6b4d3a", suit:"#2f6e64", suitDk:"#255950", shirt:"#ffffff" };
+
+  let backHair = "", frontHair = "", extras = "", brows = "";
+  if(key === "tanaka"){
+    frontHair = `<path d="M61 78 Q62 36 100 36 Q138 36 139 78 Q126 50 100 52 Q74 50 61 78 Z" fill="${C.hair}"/>
+      <path d="M70 48 Q86 40 104 42" stroke="${C.hairHi}" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <rect x="59" y="70" width="7" height="20" rx="3.5" fill="${C.hair}"/>
+      <rect x="134" y="70" width="7" height="20" rx="3.5" fill="${C.hair}"/>`;
+    brows = `<path d="M78 67 l14 -1" stroke="#2c241f" stroke-width="3" stroke-linecap="round"/>
+      <path d="M108 66 l14 1" stroke="#2c241f" stroke-width="3" stroke-linecap="round"/>`;
+    extras = `<path d="M94 134 L106 134 L103 143 L97 143 Z" fill="${C.tie}"/>
+      <path d="M97 143 L103 143 L107 164 L100 176 L93 164 Z" fill="${C.tie}"/>`;
+  }else if(key === "suzuki"){
+    backHair  = `<circle cx="100" cy="36" r="15" fill="${C.hair}"/>
+      <circle cx="100" cy="33" r="6" fill="${C.hairHi}" opacity=".55"/>`;
+    frontHair = `<path d="M61 80 Q61 38 100 38 Q139 38 139 80 Q126 52 100 54 Q74 52 61 80 Z" fill="${C.hair}"/>
+      <path d="M70 52 Q85 44 100 46" stroke="${C.hairHi}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+    brows = `<path d="M79 66 q6 -3 12 -1" stroke="#5c565f" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M109 65 q6 -2 12 1" stroke="#5c565f" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+    extras = `<g stroke="#4a4350" stroke-width="2.5" fill="none">
+        <circle cx="85" cy="80" r="10"/><circle cx="115" cy="80" r="10"/>
+        <path d="M95 80 L105 80"/><path d="M75 78 L64 74"/><path d="M125 78 L136 74"/></g>
+      <circle cx="92" cy="132" r="2.2" fill="#e9e2d2"/><circle cx="100" cy="134" r="2.2" fill="#e9e2d2"/>
+      <circle cx="108" cy="132" r="2.2" fill="#e9e2d2"/>`;
+  }else{ // sato
+    backHair  = `<path d="M58 86 Q58 40 100 40 Q142 40 142 86 L142 148 Q134 156 124 150 L124 96 Q124 74 100 74 Q76 74 76 96 L76 150 Q66 156 58 148 Z" fill="${C.hair}"/>`;
+    frontHair = `<path d="M61 82 Q61 38 100 38 Q139 38 139 82 Q128 54 102 56 Q94 56 84 62 Q70 68 61 82 Z" fill="${C.hair}"/>
+      <path d="M72 56 Q88 44 108 46" stroke="${C.hairHi}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+    brows = `<path d="M79 66 q6 -4 12 -1" stroke="#3a2e26" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path d="M109 65 q6 -3 12 1" stroke="#3a2e26" stroke-width="2.5" fill="none" stroke-linecap="round"/>`;
+    extras = `<circle cx="62" cy="96" r="2.4" fill="#d8b24a"/>`;
+  }
+  return `<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AI面接官">
+    <g class="svg-breathe">
+    <g class="svg-body">
+      <path d="M34 200 Q42 132 100 128 Q158 132 166 200 Z" fill="${C.suit}"/>
+      <path d="M84 130 L100 156 L100 200 L60 200 Q58 156 84 130 Z" fill="${C.suitDk}" opacity=".35"/>
+      <path d="M85 129 L100 154 L115 129 L100 136 Z" fill="${C.shirt}"/>
+      <path d="M85 129 L96 133 L100 154 L84 138 Z" fill="${C.suitDk}"/>
+      <path d="M115 129 L104 133 L100 154 L116 138 Z" fill="${C.suitDk}"/>
+      <rect x="90" y="106" width="20" height="24" rx="9" fill="${skin}"/>
+      <path d="M90 112 Q100 120 110 112 L110 106 L90 106 Z" fill="${skinShade}" opacity=".6"/>
+    </g>
+    <g class="svg-nod"><g class="svg-head-sway"><g class="svg-head-drift">
+      ${backHair}
+      <circle cx="61" cy="84" r="7" fill="${skin}"/>
+      <circle cx="139" cy="84" r="7" fill="${skin}"/>
+      <circle cx="61" cy="84" r="3" fill="${skinShade}" opacity=".5"/>
+      <circle cx="139" cy="84" r="3" fill="${skinShade}" opacity=".5"/>
+      <circle cx="100" cy="80" r="38" fill="${skin}"/>
+      <ellipse cx="84" cy="94" rx="5.5" ry="3.2" fill="${cheek}" opacity=".45"/>
+      <ellipse cx="116" cy="94" rx="5.5" ry="3.2" fill="${cheek}" opacity=".45"/>
+      <path d="M100 82 q2.5 5 0 8" stroke="${skinShade}" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <g class="svg-brows">${brows}</g>
+      <g class="svg-eyes">
+        <circle cx="86" cy="78" r="3.6" fill="#2c241f"/>
+        <circle cx="114" cy="78" r="3.6" fill="#2c241f"/>
+        <circle cx="87.2" cy="76.8" r="1.1" fill="#ffffff"/>
+        <circle cx="115.2" cy="76.8" r="1.1" fill="#ffffff"/>
+      </g>
+      <rect class="svg-lid" x="79" y="72" width="14" height="11" rx="5" fill="${skin}" opacity="0"/>
+      <rect class="svg-lid" x="107" y="72" width="14" height="11" rx="5" fill="${skin}" opacity="0"/>
+      <g id="svg-mouth-g">
+        <path id="svg-smile" d="M92.5 98.6 Q100 102.4 107.5 98.6" stroke="#8f4a45" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        <ellipse id="svg-mouth" cx="100" cy="99" rx="7.5" ry="0" fill="#7d3f3a"/>
+        <ellipse id="svg-teeth" cx="100" cy="97.8" rx="5" ry="0" fill="#fdfaf5" opacity=".9"/>
+      </g>
+      ${frontHair}
+      ${key === "suzuki" ? extras : ""}
+      ${key === "sato" ? extras : ""}
+    </g></g></g>
+    ${key === "tanaka" ? extras : ""}
+    </g>
+  </svg>`;
+}
+function renderFigure(){
+  $("face-figure").innerHTML = characterSVG(state.interviewerKey);
+  $("face-name").textContent = `${state.interviewer.name}(AI面接官)`;
+}
+
+/* ---- 口パク・まばたき・視線・眉(v3.6→v4.0) ----
+   v4.0: 口を「慣性つきエンジン」に刷新。
+   - 目標値(mouthTarget 0〜1)に向かって毎フレーム滑らかに追従(lerp)。
+     乱数で瞬時にジャンプする従来方式が「パクパク人形」に見える最大要因だった
+   - 開くほど横幅が狭まり(rx縮小)、顎が下がり(cy下降)、上歯がのぞく。
+     閉じている間はわずかな微笑カーブ=デフォルトの表情が「無」でなくなる */
+let mouthTimer = null, blinkTimer = null, gazeTimer = null;
+let mouthCur = 0, mouthTarget = 0, mouthRAF = null;
+let backTalking = false; // 相槌の声を出している間(v4.4)
+
+/* v4.3: 文の感情に応じて表情と声色を変える。
+   人は「大変でしたね」と「いいですね」で顔も声も変わる。
+   warm=受容・好意 / care=気遣い・共感 / neutral=通常 */
+function sentimentOf(t){
+  if(/(ありがとうございます|素晴らし|いいですね|良いですね|心強い|楽しみ|嬉し|すご|魅力)/.test(t)) return "warm";
+  if(/(大変|難し|残念|お辛|つら|苦労|不安|悩ま|ご心配)/.test(t)) return "care";
+  return "neutral";
+}
+function setExpression(mode){
+  const smile = document.getElementById("svg-smile");
+  if(smile) smile.dataset.base = mode === "warm" ? "1.2" : mode === "care" ? "0.55" : "1";
+  const brows = document.querySelector("#face-figure .svg-brows");
+  if(brows && !state.listening)
+    brows.style.transform = mode === "care" ? "translateY(1.1px)" : "translateY(0)"; // 気遣いは眉が下がる
+}
+function voiceDeltas(text){ // 高品質TTS用: 感情で声の高さ・速さを微調整
+  const m = sentimentOf(text);
+  if(m === "warm") return { pitch_delta: 0.6,  rate_delta: 0.02 };
+  if(m === "care") return { pitch_delta: -0.9, rate_delta: -0.045 };
+  return {};
+}
+function mouthApply(){
+  const m = document.getElementById("svg-mouth");
+  if(!m) return;
+  const v = mouthCur;
+  m.setAttribute("ry", (v*7.2).toFixed(2));
+  m.setAttribute("rx", (7.5 - v*2.6).toFixed(2));
+  m.setAttribute("cy", (99 + v*2.2).toFixed(2));
+  const t = document.getElementById("svg-teeth");
+  if(t){ t.setAttribute("ry", (Math.max(0, v-0.22)*1.9).toFixed(2)); t.setAttribute("cy", (98 + v*1.1).toFixed(2)); }
+  const s = document.getElementById("svg-smile");
+  if(s){
+    const base = parseFloat(s.dataset.base || "1");
+    s.style.opacity = Math.min(1, Math.max(0, 1 - v/0.12) * base).toFixed(2);
+  }
+}
+function mouthLoop(){
+  mouthCur += (mouthTarget - mouthCur) * 0.3;
+  if(Math.abs(mouthTarget - mouthCur) < 0.004) mouthCur = mouthTarget;
+  mouthApply();
+  mouthRAF = requestAnimationFrame(mouthLoop);
+}
+function startMouthEngine(){ if(!mouthRAF) mouthRAF = requestAnimationFrame(mouthLoop); }
+function stopMouthEngine(){
+  cancelAnimationFrame(mouthRAF); mouthRAF = null;
+  mouthTarget = 0; mouthCur = 0; mouthApply();
+}
+function startMouth(){ // Web Speech時の疑似口パク: 音節風リズムで目標値を更新
+  stopMouthDrive();
+  startMouthEngine();
+  const drive = ()=>{
+    if(speech.uttering && !curAudio){
+      const r = Math.random();
+      // ときどきほぼ閉じる(音節の切れ目)、それ以外は中〜大きく
+      mouthTarget = r < 0.18 ? 0.05 : 0.25 + Math.random()*0.7;
+    }else if(!curAudio && !backTalking){
+      mouthTarget = 0;
+    }
+    mouthTimer = setTimeout(drive, 70 + Math.random()*90);
+  };
+  drive();
+}
+function stopMouthDrive(){ clearTimeout(mouthTimer); mouthTimer = null; }
+function setMouthClosed(){ mouthTarget = 0; }
+function stopMouth(){
+  stopMouthDrive();
+  mouthTarget = 0; // エンジンは動かしたまま滑らかに閉じる(完全停止はsetVoiceMode OFF時)
+}
+/* まばたき: 等間隔(3.4秒)をやめ、2.2〜6.5秒のゆらぎ+15%で二度まばたき。
+   等間隔のまばたきは数十秒見ると「機械」だと気づかれる */
+function blinkOnce(again){
+  const lids = document.querySelectorAll(".svg-lid");
+  if(!lids.length) return;
+  lids.forEach(l=>l.setAttribute("opacity","1"));
+  setTimeout(()=>{
+    lids.forEach(l=>l.setAttribute("opacity","0"));
+    if(again) setTimeout(()=>blinkOnce(false), 170);
+  }, 130);
+}
+function startBlink(){
+  stopBlink();
+  const loop = ()=>{
+    blinkOnce(Math.random() < 0.15);
+    // v4.6: 人は話すとき瞬きが減り(集中)、聞くとき増える
+    const [min, rng] = speech.uttering ? [2800, 5200]
+                     : state.listening ? [1700, 3200]
+                     : [2200, 4300];
+    blinkTimer = setTimeout(loop, min + Math.random()*rng);
+  };
+  blinkTimer = setTimeout(loop, 900);
+}
+function stopBlink(){ clearTimeout(blinkTimer); blinkTimer = null; }
+/* 視線: 数秒おきに一瞬わずかに視線が泳ぎ、すぐ戻る(マイクロサッカード)。
+   聞いている間(listening)は振れ幅を小さく=相手を見て聞いている印象(v3.8) */
+function startGaze(){
+  stopGaze();
+  const move = ()=>{
+    const g = document.querySelector("#face-figure .svg-eyes");
+    if(g){
+      const amp = state.listening ? 0.6 : (speech.uttering ? 0.8 : 1.4);
+      const x = (Math.random()*2 - 1) * amp;
+      const y = (Math.random()*2 - 1) * amp * 0.5;
+      g.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      setTimeout(()=>{ if(g) g.style.transform = "translate(0,0)"; }, 480 + Math.random()*900);
+    }
+    gazeTimer = setTimeout(move, 2400 + Math.random()*2600);
+  };
+  gazeTimer = setTimeout(move, 1500);
+}
+function stopGaze(){
+  clearTimeout(gazeTimer); gazeTimer = null;
+  const g = document.querySelector("#face-figure .svg-eyes");
+  if(g) g.style.transform = "translate(0,0)";
+}
+/* 考えている仕草: 一瞬だけ視線を斜め上に外す(v3.5)。人は考えるとき目を逸らす */
+function gazeThink(){
+  const g = document.querySelector("#face-figure .svg-eyes");
+  if(!g) return;
+  g.style.transform = "translate(1.7px, -1.3px)";
+  setTimeout(()=>{ if(g) g.style.transform = "translate(0,0)"; }, 900 + Math.random()*500);
+}
+/* 眉上げ: 質問を話し始める瞬間に眉がわずかに上がる(v3.6) */
+function raiseBrows(){
+  const g = document.querySelector("#face-figure .svg-brows");
+  if(!g) return;
+  g.style.transform = "translateY(-1.6px)";
+  setTimeout(()=>{ if(g) g.style.transform = "translateY(0)"; }, 750);
+}
+
+/* ---- カメラ+録画(対面モード) ----
+   同意画面で録画を明示済み。映像+音声をMediaRecorderで記録し、
+   面談完了時(および対面モード終了時)にSupabase Storageへアップロード。
+   カメラOFF中は録画も停止する(候補者のプライバシー選択を尊重)。 */
+let camStream = null, mediaRec = null, recChunks = [];
+
+function startRecording(stream){
+  try{
+    recChunks = [];
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+      ? "video/webm;codecs=vp8,opus" : "video/webm";
+    mediaRec = new MediaRecorder(stream, { mimeType: mime });
+    mediaRec.ondataavailable = (e)=>{ if(e.data && e.data.size) recChunks.push(e.data); };
+    mediaRec.start(10000); // 10秒ごとにチャンク化
+  }catch(e){ console.warn("recording unavailable", e); mediaRec = null; }
+}
+async function stopAndUploadRecording(){
+  if(!mediaRec) return;
+  const rec = mediaRec; mediaRec = null;
+  await new Promise((res)=>{
+    rec.onstop = res;
+    try{ rec.state !== "inactive" ? rec.stop() : res(); }catch{ res(); }
+  });
+  if(!recChunks.length) return;
+  const blob = new Blob(recChunks, { type: "video/webm" });
+  recChunks = [];
+  for(let attempt = 0; attempt < 2; attempt++){
+    try{
+      const { url } = await callFn("session-io", { action: "recording_upload_url" });
+      const r = await fetch(url, { method: "PUT",
+        headers: { "Content-Type": "video/webm" }, body: blob });
+      if(r.ok){ await callFn("session-io", { action: "recording_done" }); return; }
+    }catch(e){ console.warn("recording upload retry", e); }
+    await new Promise(r=>setTimeout(r, 2000));
+  }
+}
+async function setCamera(on){
+  if(on){
+    try{
+      camStream = await navigator.mediaDevices.getUserMedia(
+        { video: { facingMode: "user" }, audio: true }); // 録画に音声も含める
+      $("self-video").srcObject = camStream;
+      $("self-video").classList.remove("hidden");
+      $("self-off").classList.add("hidden");
+      state.cameraOn = true;
+      $("cam-btn").textContent = "カメラ ON";
+      startRecording(camStream);
+      return;
+    }catch{
+      banner("カメラを利用できませんでした。カメラなしで続行します(録画は行われません)。");
+    }
+  }
+  await stopAndUploadRecording();
+  camStream?.getTracks().forEach(t=>t.stop());
+  camStream = null;
+  $("self-video").classList.add("hidden");
+  $("self-off").classList.remove("hidden");
+  state.cameraOn = false;
+  $("cam-btn").textContent = "カメラ OFF";
+}
+$("cam-btn").addEventListener("click", ()=>setCamera(!state.cameraOn));
+
+/* ---- 動画アバターエンジン(方式B) ----
+   idle(待機・まばたき)/ talking(話す)/ nod(うなずき)の3クリップを
+   状態に応じて切り替える。音素同期はしないが、TTS再生と同時にtalkingを
+   流すことで実写の話者として自然に見せる。読み込み失敗時はSVGへ復帰。 */
+let videoMode = false, vids = {};
+function setupAvatarVideos(){
+  videoMode = false; vids = {};
+  const cfg = AVATAR_VIDEOS[state.interviewerKey];
+  const wrap = $("face-video-wrap");
+  wrap.innerHTML = "";
+  if(!cfg || !cfg.idle || !cfg.talking){
+    wrap.classList.add("hidden");
+    $("face-figure").classList.remove("hidden");
+    return;
+  }
+  for(const k of ["idle","talking","nod"]){
+    if(!cfg[k]) continue;
+    const v = document.createElement("video");
+    v.src = cfg[k];
+    v.muted = true; v.loop = (k !== "nod");
+    v.playsInline = true; v.setAttribute("playsinline","");
+    v.preload = "auto";
+    v.className = "avatar-clip";
+    v.style.opacity = "0";
+    v.onerror = ()=>{ // 1本でも読めなければSVGへフォールバック
+      videoMode = false;
+      wrap.classList.add("hidden");
+      $("face-figure").classList.remove("hidden");
+    };
+    wrap.appendChild(v); vids[k] = v;
+  }
+  videoMode = true;
+  wrap.classList.remove("hidden");
+  $("face-figure").classList.add("hidden");
+  showClip("idle");
+}
+/* v3.6: ハードカットをやめクロスフェード(0.22秒)で切替。
+   idleは巻き戻さない(毎回0秒に戻ると「同じ映像のループ」だと露見する) */
+function showClip(name){
+  if(!videoMode || !vids[name]) return;
+  for(const k in vids){
+    const v = vids[k], active = (k === name);
+    if(active){
+      try{ if(k !== "idle") v.currentTime = 0; v.play(); }catch{}
+      v.style.opacity = "1";
+    }else{
+      v.style.opacity = "0";
+      setTimeout(()=>{ if(v.style.opacity === "0") v.pause(); }, 240);
+    }
+  }
+  if(name === "nod" && vids.nod){
+    vids.nod.onended = ()=>showClip("idle"); // うなずきは1回で待機へ戻る
+  }
+}
+/* 発話状態の一元制御: 動画モードならクリップ切替、SVGなら口パク */
+function avatarTalking(on){
+  if(realAv.active) return; // v4.1: 実写アバターは音声に自動追従する
+  if(videoMode) showClip(on ? "talking" : "idle");
+  else on ? startMouth() : stopMouth();
+}
+function avatarNod(){
+  if(realAv.active) return; // v4.1: 実写アバターの仕草はLiveAvatar側が生成
+  if(videoMode){ if(vids.nod) showClip("nod"); return; }
+  const g = document.querySelector("#face-figure .svg-nod");
+  if(!g) return;
+  // v4.0: 毎回同じ深さのうなずきは機械的。4割は小さな相槌うなずきに
+  const soft = Math.random() < 0.4;
+  const cls = soft ? "nodding-soft" : "nodding";
+  g.classList.remove("nodding", "nodding-soft");
+  void g.getBoundingClientRect(); // アニメ再始動のためのreflow
+  g.classList.add(cls);
+  setTimeout(()=>g.classList.remove(cls), soft ? 750 : 1100);
+}
+
+function faceShowAiTurn(text, isComplete){
+  $("face-subtitle").textContent = text;
+  $("face-status").textContent = "話しています…";
+  $("face-stage").classList.add("speaking");
+  speechSay(text, ()=>finishAiTurn(isComplete));
+}
+async function finishAiTurn(isComplete){
+  stopBargeWatch(); // v4.8: 発話が終わったら割り込み監視も終了
+  if(state.barged && !isComplete) return; // 割り込み済み=すでに傾聴中。recBufferを守る
+  $("face-stage").classList.remove("speaking");
+  if(isComplete){
+    $("face-status").textContent = "面接の記録を保存しています…そのままお待ちください";
+    realAvatarStop(true); // v4.1: 実写アバターを終了(課金停止)
+    await setCamera(false); // 録画停止→アップロードまで完了させる
+    show("screen-done");
+  }
+  else startListening();
+}
+
+function setVoiceMode(on){
+  if(on && !SR){
+    banner("お使いのブラウザは対面モードに対応していないため、テキストモードでご案内します。");
+    on = false;
+  }
+  state.voiceMode = on;
+  $("voice-toggle").classList.toggle("on", on);
+  $("voice-toggle").setAttribute("aria-pressed", String(on));
+  $("face-panel").classList.toggle("hidden", !on);
+  $("chat-log").classList.toggle("hidden", on);
+  $("composer").classList.toggle("hidden", on);
+  if(on){
+    // 文字起こしは対面モードではデフォルト非表示(1-3)
+    state.showTranscript = false;
+    $("transcript-toggle").classList.remove("on");
+    $("transcript-toggle").setAttribute("aria-pressed", "false");
+    renderFigure();
+    setupAvatarVideos();          // 動画クリップ設定があればそれ、なければSVG
+    if(!videoMode){ startBlink(); startGaze(); startMouth(); }
+    setCamera(true);
+    closeSettings();
+    // v4.1: サーバにLIVEAVATAR_API_KEYがあれば実写級アバターへ昇格。
+    // 未設定・失敗時はこのままSVGで続行(原価0円フォールバック)
+    realAvatarStart().finally(()=>{
+      if(state.lastAiText) faceShowAiTurn(state.lastAiText, state.completed);
+    });
+  }else{
+    stopListening();
+    stopBargeWatch(); // v4.8
+    realAvatarStop(true); // v4.1: 課金を止める
+    stopMouth(); stopMouthEngine(); stopBlink(); stopGaze();
+    setCamera(false);
+    speechReset();
+  }
+}
+
+/* ---- 対面モードの操作 ---- */
+/* v5.1: 回答の確定を関数化。ボタン押下と「無音での自動送信」の両方から呼ぶ。
+   auto=true のときは、聞き取れていない場合に注意文を出さず黙って聞き直す
+   (自動判定の誤爆で候補者を不安にさせないため) */
+function submitAnswer(auto){
+  if(state.busy) return;
+  unlockAudio();
+  stopListening();
+  const text = recBuffer.trim(); recBuffer = "";
+  if(!text){
+    if(!auto) $("face-status").textContent = "うまく聞き取れませんでした。もう一度お話しください";
+    startListening();
+    return;
+  }
+  setBusy(true); // v5.1: 投機の待ち合わせ(最大2秒)の間の二重送信を防ぐ。requestAiTurn側の設定と重複しても無害
+  addMsg("me", text); // 文字起こし非表示時はバブルを出さない(サーバには保存される)
+  $("face-subtitle").textContent = "";
+  $("face-status").textContent = "考えています…";
+  avatarNod();        // v3.8: まず受け止めのうなずき
+  gazeThink();        // v3.5: 一瞬視線を外す=考えている仕草
+  speechReset();
+  speakFiller();      // 一拍おいて相槌。ストリーミング本文が同じキューの後ろに続く(v3.7)
+  // v5.1: 確定テキストと同じ内容の先行生成が飛行中なら、最大2秒だけ待ってから送る。
+  //   間に合えばサーバーのキャッシュに当たり、応答はほぼ即時に返る。
+  //   間に合わなくても通常生成に落ちるだけで、待ち損は上限2秒。
+  const spec = (specText === text && specPromise)
+    ? Promise.race([specPromise, new Promise(r=>setTimeout(r, 2000))])
+    : Promise.resolve();
+  spec.finally(()=>requestAiTurn(text));
+}
+$("face-done").addEventListener("click", ()=>submitAnswer(false));
+$("face-skip").addEventListener("click", (e)=>{
+  e.preventDefault();
+  if(state.busy) return;
+  stopListening(); recBuffer = "";
+  $("face-status").textContent = "考えています…";
+  speechReset();
+  requestAiTurn("", "skip");
+});
+$("face-text").addEventListener("click", (e)=>{ e.preventDefault(); setVoiceMode(false); });
+
+/* ---- 設定パネル ---- */
+$("settings-btn").addEventListener("click", ()=>{
+  $("settings-panel").classList.remove("hidden");
+  $("overlay").classList.remove("hidden");
+});
+function closeSettings(){
+  $("settings-panel").classList.add("hidden");
+  $("overlay").classList.add("hidden");
+}
+$("settings-close").addEventListener("click", closeSettings);
+$("overlay").addEventListener("click", closeSettings);
+
+$("voice-toggle").addEventListener("click", ()=>setVoiceMode(!state.voiceMode));
+$("transcript-toggle").addEventListener("click", function(){
+  state.showTranscript = !state.showTranscript;
+  this.classList.toggle("on", state.showTranscript);
+  this.setAttribute("aria-pressed", String(state.showTranscript));
+});
+
+init();
+scheduleRetry(2000); // 前回セッションの未送信キューがあれば再送
+</script>
+</body>
+</html>
